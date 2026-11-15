@@ -285,3 +285,76 @@ chatForm.addEventListener('submit', async (e) => {
     statusBanner.textContent = 'Error: ' + err.message;
   }
 });
+
+// Database Visualizer Logic
+const dbModal = document.getElementById('db-modal');
+const btnViewDb = document.getElementById('btn-view-db');
+const btnCloseDb = document.getElementById('btn-close-db');
+
+btnViewDb.addEventListener('click', async () => {
+  dbModal.style.display = 'flex';
+  await loadDatabaseState();
+});
+
+btnCloseDb.addEventListener('click', () => {
+  dbModal.style.display = 'none';
+});
+
+// Tab switching
+document.querySelectorAll('.db-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.db-tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.db-tab-pane').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    const targetPane = document.getElementById(tab.getAttribute('data-tab'));
+    if (targetPane) targetPane.classList.add('active');
+  });
+});
+
+async function loadDatabaseState() {
+  try {
+    const res = await fetch('/api/db');
+    const data = await res.json();
+
+    // Render Threads
+    renderTable('tab-threads', data.threads, ['id', 'title', 'created_at']);
+
+    // Render Turns
+    renderTable('tab-turns', data.turns, ['id', 'thread_id', 'role', 'content', 'created_at']);
+
+    // Render Observations
+    renderTable('tab-observations', data.observations, ['id', 'entity', 'attribute', 'value', 'currency', 'plan', 'as_of']);
+
+    // Render Cache
+    renderTable('tab-cache', data.cacheStats, ['total_cached']);
+  } catch (e) {
+    console.error('Failed to load DB state:', e);
+  }
+}
+
+function renderTable(containerId, rows, columns) {
+  const container = document.getElementById(containerId);
+  if (!rows || rows.length === 0) {
+    container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No records found in this table.</p>';
+    return;
+  }
+
+  let html = '<table class="db-table"><thead><tr>';
+  columns.forEach((col) => {
+    html += `<th>${col}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  rows.forEach((row) => {
+    html += '<tr>';
+    columns.forEach((col) => {
+      let val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
+      if (val.length > 80) val = val.slice(0, 80) + '...';
+      html += `<td title="${String(row[col] || '')}">${val}</td>`;
+    });
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}

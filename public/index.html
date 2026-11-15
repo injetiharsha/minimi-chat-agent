@@ -19,6 +19,7 @@
       </div>
       <div class="header-right">
         <span class="clock-display" id="clock-display">Loading time...</span>
+        <button id="btn-view-db" class="btn-text" style="color: #60a5fa;">📊 View Database</button>
         <button id="btn-reset" class="btn-text">Reset Session</button>
       </div>
     </header>
@@ -70,6 +71,31 @@
       </form>
     </footer>
   </div>
+  <!-- Database Visualizer Modal -->
+  <div id="db-modal" class="db-modal" style="display: none;">
+    <div class="db-modal-content">
+      <div class="db-modal-header">
+        <div class="db-title-group">
+          <h3>SQLite Database Visualizer</h3>
+          <span class="db-tag">data/minimi.db</span>
+        </div>
+        <button id="btn-close-db" class="btn-text">&times;</button>
+      </div>
+      <div class="db-modal-tabs">
+        <button class="db-tab active" data-tab="tab-threads">Threads</button>
+        <button class="db-tab" data-tab="tab-turns">Turns (History)</button>
+        <button class="db-tab" data-tab="tab-observations">Observations (EAV)</button>
+        <button class="db-tab" data-tab="tab-cache">Search Cache</button>
+      </div>
+      <div class="db-modal-body">
+        <div id="tab-threads" class="db-tab-pane active"></div>
+        <div id="tab-turns" class="db-tab-pane"></div>
+        <div id="tab-observations" class="db-tab-pane"></div>
+        <div id="tab-cache" class="db-tab-pane"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

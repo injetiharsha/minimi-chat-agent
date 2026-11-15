@@ -195,6 +195,18 @@ export class DatabaseClient {
     this.save();
   }
 
+  exportRows(sql: string, params: Record<string, any> = {}): any[] {
+    if (!this.db) throw new Error('Database not initialized');
+    const stmt = this.db.prepare(sql);
+    stmt.bind(params);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return rows;
+  }
+
   reset(): void {
     if (this.db) {
       this.db.close();

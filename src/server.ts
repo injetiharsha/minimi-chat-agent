@@ -37,6 +37,15 @@ app.get('/health', (c) => {
   });
 });
 
+// Database Inspection endpoint
+app.get('/api/db', (c) => {
+  const threads = db.exportRows('SELECT id, title, created_at FROM threads ORDER BY created_at DESC');
+  const turns = db.exportRows('SELECT id, thread_id, role, content, created_at FROM turns ORDER BY created_at DESC LIMIT 50');
+  const observations = db.exportRows('SELECT * FROM observations ORDER BY as_of DESC LIMIT 50');
+  const cacheStats = db.exportRows('SELECT count(*) as total_cached FROM search_cache');
+  return c.json({ threads, turns, observations, cacheStats });
+});
+
 // History endpoint
 app.get('/api/history/:threadId', (c) => {
   const threadId = c.req.param('threadId');
