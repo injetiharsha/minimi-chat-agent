@@ -3,107 +3,145 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Minimi — Mac Temporal Intelligence</title>
+  <title>Minimi</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body class="mac-light-bg">
-  <div class="mac-window">
-    <!-- Window Titlebar -->
-    <header class="mac-titlebar">
-      <div class="window-controls">
-        <span class="control close"></span>
-        <span class="control minimize"></span>
-        <span class="control zoom"></span>
+<body class="app-body">
+  <div class="app-layout">
+    <!-- Collapsible Left Navigation Sidebar -->
+    <aside class="app-sidebar" id="app-sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <span class="brand-name">Minimi</span>
+          <span class="brand-tag">Agent</span>
+        </div>
+        <button id="btn-new-chat" class="btn-new-chat" title="New Chat">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>New Chat</span>
+        </button>
       </div>
 
-      <div class="window-title-container">
-        <span class="window-app-name">Minimi</span>
-        <span class="window-divider">/</span>
-        <span class="window-mode-label">Temporal Agent</span>
+      <div class="sidebar-section-label">Evaluation Scenarios</div>
+      <div class="sidebar-history-list">
+        <button class="history-item active" data-preset="crm">
+          <span class="history-title">Monday CRM Shortlist</span>
+          <span class="history-date">Nov 9, 2026</span>
+        </button>
+        <button class="history-item" data-preset="postgres">
+          <span class="history-title">Last Tuesday Postgres</span>
+          <span class="history-date">Nov 3, 2026</span>
+        </button>
+        <button class="history-item" data-preset="nov3">
+          <span class="history-title">3 Nov Answer Check</span>
+          <span class="history-date">Nov 3, 2026</span>
+        </button>
+        <button class="history-item" data-preset="empty">
+          <span class="history-title">Missing Memory Test</span>
+          <span class="history-date">Zero Hallucination</span>
+        </button>
       </div>
 
-      <div class="window-actions">
-        <span class="clock-display" id="clock-display">--:--</span>
-        <button id="btn-toggle-db" class="btn-subtle">Database</button>
-        <button id="btn-reset" class="btn-subtle">New Session</button>
+      <div class="sidebar-footer">
+        <div class="engine-badge">
+          <span class="engine-status"></span>
+          <span>gemini-3.5-flash / tavily</span>
+        </div>
+        <button id="btn-toggle-db" class="btn-db-subtle">Inspect Database</button>
       </div>
-    </header>
+    </aside>
 
-    <!-- Preset Scenarios Toolbar -->
-    <div class="preset-toolbar">
-      <span class="preset-heading">Scenarios</span>
-      <button class="preset-btn" data-preset="crm">Monday CRM Shortlist</button>
-      <button class="preset-btn" data-preset="postgres">Last Tuesday Postgres</button>
-      <button class="preset-btn" data-preset="nov3">3 Nov Answer Check</button>
-      <button class="preset-btn" data-preset="empty">Missing Memory Test</button>
+    <!-- Main Workspace -->
+    <div class="main-viewport">
+      <!-- Top Minimal Header -->
+      <header class="top-nav">
+        <div class="top-nav-left">
+          <button id="btn-toggle-sidebar" class="icon-toggle-btn" title="Toggle Sidebar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
+          <span class="nav-thread-title" id="nav-thread-title">New Session</span>
+        </div>
+
+        <div class="top-nav-right">
+          <span class="clock-tag" id="clock-display">--:--</span>
+        </div>
+      </header>
+
+      <!-- Scrollable Message Stream -->
+      <main class="chat-flow" id="chat-viewport">
+        <div class="welcome-view" id="welcome-card">
+          <div class="welcome-headline">Minimi Temporal Intelligence</div>
+          <p class="welcome-subtext">Evaluating knowledge decay across conversational memory and live web evidence.</p>
+
+          <div class="quick-cards-grid">
+            <div class="quick-card" data-query="On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?">
+              <div class="card-name">Monday CRM Shortlist</div>
+              <div class="card-caption">Verifies HubSpot, Pipedrive, Zoho, Close and Freshsales since Monday baseline</div>
+            </div>
+            <div class="quick-card" data-query="Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?">
+              <div class="card-name">Last Tuesday Postgres</div>
+              <div class="card-caption">Compares Supabase Pro ($25/mo) and Neon serverless with current live web pricing</div>
+            </div>
+            <div class="quick-card" data-query="What did I ask you on 3 November? Is your answer still correct today?">
+              <div class="card-name">3 November Answer Check</div>
+              <div class="card-caption">Recalls previous Playwright recommendation from 3 November and validates today</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="messages-stream" id="messages-list"></div>
+      </main>
+
+      <!-- Bottom Command Input Capsule -->
+      <footer class="bottom-bar">
+        <div class="input-container">
+          <form id="chat-form" class="chat-form">
+            <textarea
+              id="user-input"
+              rows="1"
+              placeholder="Ask a question or check if past information changed..."
+            ></textarea>
+            <button type="submit" class="submit-btn" id="btn-submit" title="Send message">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            </button>
+          </form>
+        </div>
+      </footer>
     </div>
+  </div>
 
-    <!-- Main Chat Workspace -->
-    <main class="chat-viewport" id="chat-viewport">
-      <div class="welcome-container" id="welcome-card">
-        <div class="welcome-header">
-          <h1>Minimi Agent</h1>
-          <p>Temporal memory verification and live web search. Ask any question, or check if past decisions have changed.</p>
+  <!-- Database Inspector Modal (Dev Testing) -->
+  <div id="db-modal" class="db-modal" style="display: none;">
+    <div class="db-modal-inner">
+      <div class="db-modal-header">
+        <div class="db-header-info">
+          <h3>SQLite Database Inspector</h3>
+          <code>data/minimi.db</code>
         </div>
-
-        <div class="prompt-grid">
-          <div class="prompt-card" data-query="On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?">
-            <div class="prompt-card-title">CRM Pricing Decay</div>
-            <div class="prompt-card-desc">Compare HubSpot, Pipedrive, Zoho, Close and Freshsales with Monday baseline</div>
-          </div>
-          <div class="prompt-card" data-query="Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?">
-            <div class="prompt-card-title">Postgres Hosting Changes</div>
-            <div class="prompt-card-desc">Verify Supabase ($25/mo) and Neon against live web pricing</div>
-          </div>
-          <div class="prompt-card" data-query="What did I ask you on 3 November? Is your answer still correct today?">
-            <div class="prompt-card-title">Date Recall & Grounding</div>
-            <div class="prompt-card-desc">Recall previous recommendation from 3 November and check current status</div>
-          </div>
-        </div>
+        <button id="btn-close-db" class="btn-modal-close">Close</button>
       </div>
-
-      <div class="messages-list" id="messages-list"></div>
-    </main>
-
-    <!-- Bottom Input Console -->
-    <footer class="console-footer">
-      <div class="status-indicator" id="status-banner"></div>
-      <form id="chat-form" class="input-capsule">
-        <textarea
-          id="user-input"
-          rows="1"
-          placeholder="Ask a question or check if past data changed..."
-        ></textarea>
-        <div class="capsule-actions">
-          <span class="shortcut-tag">Return</span>
-          <button type="submit" class="btn-send" id="btn-submit">Send</button>
-        </div>
-      </form>
-    </footer>
-
-    <!-- Database Inspector Panel (Slide-out / Overlay) -->
-    <div id="db-panel" class="db-panel" style="display: none;">
-      <div class="db-panel-header">
-        <div class="db-panel-title">
-          <span>SQLite Database</span>
-          <code class="db-path-badge">data/minimi.db</code>
-        </div>
-        <button id="btn-close-db" class="btn-subtle">Close</button>
+      <div class="db-tabs">
+        <button class="db-tab-btn active" data-tab="tab-threads">Threads</button>
+        <button class="db-tab-btn" data-tab="tab-turns">Turns</button>
+        <button class="db-tab-btn" data-tab="tab-observations">Observations (EAV)</button>
+        <button class="db-tab-btn" data-tab="tab-cache">Search Cache</button>
       </div>
-      <div class="db-tab-bar">
-        <button class="db-nav-tab active" data-tab="tab-threads">Threads</button>
-        <button class="db-nav-tab" data-tab="tab-turns">Turns</button>
-        <button class="db-nav-tab" data-tab="tab-observations">Observations</button>
-        <button class="db-nav-tab" data-tab="tab-cache">Search Cache</button>
-      </div>
-      <div class="db-panel-body">
-        <div id="tab-threads" class="db-view active"></div>
-        <div id="tab-turns" class="db-view"></div>
-        <div id="tab-observations" class="db-view"></div>
-        <div id="tab-cache" class="db-view"></div>
+      <div class="db-content-area">
+        <div id="tab-threads" class="db-pane active"></div>
+        <div id="tab-turns" class="db-pane"></div>
+        <div id="tab-observations" class="db-pane"></div>
+        <div id="tab-cache" class="db-pane"></div>
       </div>
     </div>
   </div>

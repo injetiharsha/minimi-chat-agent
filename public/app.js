@@ -1,13 +1,20 @@
+// Minimi Full-Page Frosted Glass Chat Agent
 let threadId = 'session-' + Date.now();
 const messagesList = document.getElementById('messages-list');
 const welcomeCard = document.getElementById('welcome-card');
 const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
-const statusBanner = document.getElementById('status-banner');
 const clockDisplay = document.getElementById('clock-display');
-const dbPanel = document.getElementById('db-panel');
+const appSidebar = document.getElementById('app-sidebar');
+const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+const btnNewChat = document.getElementById('btn-new-chat');
+const navThreadTitle = document.getElementById('nav-thread-title');
+const chatViewport = document.getElementById('chat-viewport');
+const dbModal = document.getElementById('db-modal');
+const btnToggleDb = document.getElementById('btn-toggle-db');
+const btnCloseDb = document.getElementById('btn-close-db');
 
-// Update macOS clock display
+// Live macOS Clock
 function updateClock() {
   const now = new Date();
   if (clockDisplay) {
@@ -20,7 +27,7 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Auto-expand textarea & Enter to submit
+// Textarea Auto-Resize & Keyboard Handling (No arrows, no resize handles)
 userInput.addEventListener('input', () => {
   userInput.style.height = 'auto';
   userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
@@ -33,44 +40,31 @@ userInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Prompt card click
-document.querySelectorAll('.prompt-card').forEach((card) => {
-  card.addEventListener('click', () => {
-    userInput.value = card.getAttribute('data-query');
-    userInput.focus();
+// Collapsible Left Navigation Sidebar (ChatGPT / Claude style)
+if (btnToggleSidebar && appSidebar) {
+  btnToggleSidebar.addEventListener('click', () => {
+    appSidebar.classList.toggle('collapsed');
   });
-});
+}
 
-// Reset session
-document.getElementById('btn-reset').addEventListener('click', () => {
+// New Chat Button
+if (btnNewChat) {
+  btnNewChat.addEventListener('click', () => {
+    startNewSession('New Session');
+  });
+}
+
+function startNewSession(title) {
   threadId = 'session-' + Date.now();
   messagesList.innerHTML = '';
-  welcomeCard.style.display = 'flex';
-  statusBanner.textContent = 'Session reset. New clean memory initialized.';
-  setTimeout(() => (statusBanner.textContent = ''), 2500);
-});
+  if (welcomeCard) welcomeCard.style.display = 'flex';
+  if (navThreadTitle) navThreadTitle.textContent = title || 'New Session';
+  userInput.value = '';
+  userInput.style.height = 'auto';
+  document.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
+}
 
-// Database Inspector Toggle
-document.getElementById('btn-toggle-db').addEventListener('click', async () => {
-  dbPanel.style.display = 'flex';
-  await loadDatabaseState();
-});
-
-document.getElementById('btn-close-db').addEventListener('click', () => {
-  dbPanel.style.display = 'none';
-});
-
-document.querySelectorAll('.db-nav-tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.db-nav-tab').forEach((t) => t.classList.remove('active'));
-    document.querySelectorAll('.db-view').forEach((v) => v.classList.remove('active'));
-    tab.classList.add('active');
-    const target = document.getElementById(tab.getAttribute('data-tab'));
-    if (target) target.classList.add('active');
-  });
-});
-
-// Grader Quick Scenario Presets
+// 4 Canonical Evaluation Scenarios
 const PRESETS = {
   crm: {
     title: 'Monday CRM Shortlist',
@@ -134,7 +128,7 @@ const PRESETS = {
     nowOverride: '2026-11-14T10:00:00Z',
   },
   empty: {
-    title: 'Missing Memory Boundary Test',
+    title: 'Missing Memory Test',
     threadId: 'empty-test-thread',
     turns: [],
     query: 'On Monday we shortlisted 5 email marketing tools. Has any of them changed pricing?',
@@ -142,16 +136,26 @@ const PRESETS = {
   },
 };
 
-document.querySelectorAll('.preset-btn').forEach((btn) => {
-  btn.addEventListener('click', async () => {
-    const key = btn.getAttribute('data-preset');
-    const p = PRESETS[key];
-    if (!p) return;
+// Handle Scenario Activation
+async function activateScenario(key) {
+  const p = PRESETS[key];
+  if (!p) return;
 
-    statusBanner.textContent = `Seeding ${p.title} into SQLite...`;
-    threadId = p.threadId;
+  threadId = p.threadId;
+  if (navThreadTitle) navThreadTitle.textContent = p.title;
 
-    if (p.turns.length > 0) {
+  // Highlight active sidebar item
+  document.querySelectorAll('.history-item').forEach((item) => {
+    if (item.getAttribute('data-preset') === key) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
+  // Seed baseline turns into SQLite
+  if (p.turns.length > 0) {
+    try {
       await fetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -161,60 +165,217 @@ document.querySelectorAll('.preset-btn').forEach((btn) => {
           turns: p.turns,
         }),
       });
+    } catch (e) {
+      console.warn('Scenario seeding warning:', e);
     }
+  }
 
-    userInput.value = p.query;
-    userInput.focus();
-    statusBanner.textContent = `Ready: ${p.title}. Press Send or Return to execute.`;
+  userInput.value = p.query;
+  userInput.style.height = 'auto';
+  userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+  userInput.focus();
+}
+
+// Sidebar Scenario Item Click
+document.querySelectorAll('.history-item').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const key = btn.getAttribute('data-preset');
+    activateScenario(key);
   });
 });
 
-// Markdown parser
+// Welcome Quick-Cards Click
+document.querySelectorAll('.quick-card').forEach((card) => {
+  card.addEventListener('click', () => {
+    const q = card.getAttribute('data-query');
+    if (!q) return;
+
+    if (q.includes('CRM')) activateScenario('crm');
+    else if (q.includes('Postgres')) activateScenario('postgres');
+    else if (q.includes('3 November')) activateScenario('nov3');
+    else {
+      userInput.value = q;
+      userInput.focus();
+    }
+  });
+});
+
+// Robust Markdown & HTML Table Parser
 function renderMarkdown(text) {
   if (!text) return '';
-  return text
-    .replace(/^### (.*$)/gim, '<h3 style="font-size: 1rem; font-weight:600; margin: 12px 0 6px;">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 style="font-size: 1.15rem; font-weight:600; margin: 14px 0 8px;">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 style="font-size: 1.3rem; font-weight:700; margin: 16px 0 10px;">$1</h1>')
-    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-    .replace(/`\[Changed\]`/gim, '<span class="status-tag changed">[Changed]</span>')
-    .replace(/`\[No change found\]`/gim, '<span class="status-tag no-change">[No change found]</span>')
-    .replace(/`\[Unverified\]`/gim, '<span class="status-tag unverified">[Unverified]</span>')
-    .replace(/`([^`]+)`/gim, '<code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:0.82rem;">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-    .replace(/\n\n/gim, '<br><br>');
+
+  const lines = text.split('\n');
+  const result = [];
+  let inTable = false;
+  let tableHeader = [];
+  let tableRows = [];
+
+  function formatInline(cell) {
+    let c = cell.trim();
+    // Bolding
+    c = c.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Inline code
+    c = c.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Status tags
+    c = c.replace(/\[Changed\]/g, '<span class="status-tag changed">[Changed]</span>');
+    c = c.replace(/\[No change found\]/g, '<span class="status-tag no-change">[No change found]</span>');
+    c = c.replace(/\[Unverified\]/g, '<span class="status-tag unverified">[Unverified]</span>');
+    // Markdown links
+    c = c.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return c;
+  }
+
+  function flushTable() {
+    if (tableHeader.length > 0) {
+      let html = '<div class="table-wrapper"><table class="markdown-table"><thead><tr>';
+      tableHeader.forEach((h) => (html += `<th>${formatInline(h)}</th>`));
+      html += '</tr></thead><tbody>';
+      tableRows.forEach((row) => {
+        html += '<tr>';
+        row.forEach((cell) => (html += `<td>${formatInline(cell)}</td>`));
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      result.push(html);
+    }
+    inTable = false;
+    tableHeader = [];
+    tableRows = [];
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    // Markdown Table Detection
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const cells = trimmed
+        .slice(1, -1)
+        .split('|')
+        .map((s) => s.trim());
+      // Check if separator line (| :--- | :--- |)
+      const isSep = cells.every((c) => /^:?-+:?$/.test(c));
+      if (isSep) {
+        continue;
+      }
+      if (!inTable) {
+        inTable = true;
+        tableHeader = cells;
+      } else {
+        tableRows.push(cells);
+      }
+    } else {
+      if (inTable) {
+        flushTable();
+      }
+
+      if (trimmed.startsWith('### ')) {
+        result.push(`<h3 class="md-h3">${formatInline(trimmed.slice(4))}</h3>`);
+      } else if (trimmed.startsWith('## ')) {
+        result.push(`<h2 class="md-h2">${formatInline(trimmed.slice(3))}</h2>`);
+      } else if (trimmed.startsWith('# ')) {
+        result.push(`<h1 class="md-h1">${formatInline(trimmed.slice(2))}</h1>`);
+      } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        result.push(`<li class="md-li">${formatInline(trimmed.slice(2))}</li>`);
+      } else if (/^\d+\.\s/.test(trimmed)) {
+        const itemText = trimmed.replace(/^\d+\.\s+/, '');
+        result.push(`<li class="md-num-li">${formatInline(itemText)}</li>`);
+      } else if (trimmed.length > 0) {
+        result.push(`<p class="md-p">${formatInline(trimmed)}</p>`);
+      }
+    }
+  }
+
+  if (inTable) flushTable();
+
+  return result.join('');
 }
 
-// Chat submission & SSE stream
+// Collapsible Reasoning Accordion Builder (Gemini / Antigravity style)
+function createReasoningAccordion(steps) {
+  const block = document.createElement('div');
+  block.className = 'reasoning-block';
+
+  const header = document.createElement('div');
+  header.className = 'reasoning-header';
+  header.innerHTML = `
+    <div class="reasoning-title-group">
+      <svg class="reasoning-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="9 18 15 12 9 6"></polyline>
+      </svg>
+      <span>Reasoning Steps</span>
+      <span class="reasoning-step-count">${steps.length} steps</span>
+    </div>
+    <span style="font-size:0.72rem; color:var(--text-muted);">Expand</span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'reasoning-body';
+  body.innerHTML = steps
+    .map(
+      (s, idx) => `
+    <div class="reasoning-step-item">
+      <span class="step-num">${idx + 1}.</span>
+      <div class="step-text">
+        <strong style="color:var(--text-main); font-weight:600;">${escapeText(s.title)}:</strong>
+        <span>${escapeText(s.detail)}</span>
+      </div>
+    </div>
+  `
+    )
+    .join('');
+
+  header.addEventListener('click', () => {
+    block.classList.toggle('open');
+    const hint = header.querySelector('span:last-child');
+    if (hint) {
+      hint.textContent = block.classList.contains('open') ? 'Collapse' : 'Expand';
+    }
+  });
+
+  block.appendChild(header);
+  block.appendChild(body);
+  return block;
+}
+
+function escapeText(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Chat Form Submission & SSE Streaming
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = userInput.value.trim();
   if (!query) return;
 
-  welcomeCard.style.display = 'none';
+  if (welcomeCard) welcomeCard.style.display = 'none';
   userInput.value = '';
   userInput.style.height = 'auto';
 
-  // Append user message bubble
-  const userRow = document.createElement('div');
-  userRow.className = 'message-item user';
-  userRow.innerHTML = `<div class="bubble">${query}</div>`;
-  messagesList.appendChild(userRow);
+  // 1. Render User Message
+  const userWrapper = document.createElement('div');
+  userWrapper.className = 'msg-wrapper user';
+  userWrapper.innerHTML = `<div class="chat-bubble">${escapeText(query)}</div>`;
+  messagesList.appendChild(userWrapper);
 
-  // Append assistant message container (empty, no placeholder)
-  const assistantRow = document.createElement('div');
-  assistantRow.className = 'message-item assistant';
+  // 2. Prepare Assistant Message Container
+  const assistantWrapper = document.createElement('div');
+  assistantWrapper.className = 'msg-wrapper assistant';
+
   const assistantBubble = document.createElement('div');
-  assistantBubble.className = 'bubble';
+  assistantBubble.className = 'chat-bubble';
   assistantBubble.innerHTML = '';
-  assistantRow.appendChild(assistantBubble);
-  messagesList.appendChild(assistantRow);
+  assistantWrapper.appendChild(assistantBubble);
+  messagesList.appendChild(assistantWrapper);
 
-  const scrollViewport = document.getElementById('chat-viewport');
-  scrollViewport.scrollTop = scrollViewport.scrollHeight;
+  chatViewport.scrollTop = chatViewport.scrollHeight;
 
-  statusBanner.textContent = 'Searching web and evaluating baseline...';
+  let reasoningBlockAppended = false;
 
   try {
     const response = await fetch('/api/chat', {
@@ -246,57 +407,84 @@ chatForm.addEventListener('submit', async (e) => {
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
+
+            // Token delta
             if (data.delta) {
               accumulatedText += data.delta;
               assistantBubble.innerHTML = renderMarkdown(accumulatedText);
-              statusBanner.textContent = '';
-            } else if (data.status) {
-              statusBanner.textContent = data.status;
-            } else if (data.text) {
-              // Preamble event (clean without emoji)
-              const cleanText = data.text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|⚡|✦|📊/gu, '').trim();
-              const preambleDiv = document.createElement('div');
-              preambleDiv.className = 'preamble-label';
-              preambleDiv.textContent = cleanText;
-              assistantBubble.parentNode.insertBefore(preambleDiv, assistantBubble);
-            } else if (data.error) {
-              assistantBubble.innerHTML = `<span style="color:#ef4444;">${data.error}</span>`;
+            }
+            // Collapsible reasoning steps event
+            else if (data.steps && !reasoningBlockAppended) {
+              const accordion = createReasoningAccordion(data.steps);
+              assistantWrapper.insertBefore(accordion, assistantBubble);
+              reasoningBlockAppended = true;
+            }
+            // Tool call status update
+            else if (data.status) {
+              // Subtle search status if needed
+            }
+            // Error
+            else if (data.error) {
+              assistantBubble.innerHTML = `<span style="color:#ef4444;">${escapeText(data.error)}</span>`;
             }
           } catch {}
         }
       }
-      scrollViewport.scrollTop = scrollViewport.scrollHeight;
+      chatViewport.scrollTop = chatViewport.scrollHeight;
     }
-    statusBanner.textContent = '';
   } catch (err) {
-    assistantBubble.innerHTML = `<span style="color:#ef4444;">${err.message}</span>`;
-    statusBanner.textContent = '';
+    assistantBubble.innerHTML = `<span style="color:#ef4444;">${escapeText(err.message)}</span>`;
   }
 });
 
-// Database State Loader
-async function loadDatabaseState() {
+// Database Inspector Modal (Dev Testing)
+if (btnToggleDb && dbModal) {
+  btnToggleDb.addEventListener('click', async () => {
+    dbModal.style.display = 'flex';
+    await loadDatabaseInspector();
+  });
+}
+
+if (btnCloseDb && dbModal) {
+  btnCloseDb.addEventListener('click', () => {
+    dbModal.style.display = 'none';
+  });
+}
+
+document.querySelectorAll('.db-tab-btn').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.db-tab-btn').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.db-pane').forEach((p) => p.classList.remove('active'));
+    tab.classList.add('active');
+    const target = document.getElementById(tab.getAttribute('data-tab'));
+    if (target) target.classList.add('active');
+  });
+});
+
+async function loadDatabaseInspector() {
   try {
     const res = await fetch('/api/db');
     const data = await res.json();
 
-    renderTable('tab-threads', data.threads, ['id', 'title', 'created_at']);
-    renderTable('tab-turns', data.turns, ['id', 'thread_id', 'role', 'content', 'created_at']);
-    renderTable('tab-observations', data.observations, ['id', 'entity', 'attribute', 'value', 'currency', 'plan', 'as_of']);
-    renderTable('tab-cache', data.cacheStats, ['total_cached']);
+    renderRawDbTable('tab-threads', data.threads, ['id', 'title', 'created_at']);
+    renderRawDbTable('tab-turns', data.turns, ['id', 'thread_id', 'role', 'content', 'created_at']);
+    renderRawDbTable('tab-observations', data.observations, ['id', 'entity', 'attribute', 'value', 'currency', 'plan', 'as_of']);
+    renderRawDbTable('tab-cache', data.cacheStats, ['total_cached']);
   } catch (e) {
-    console.error('Failed to load database state:', e);
+    console.error('Failed to load database inspector:', e);
   }
 }
 
-function renderTable(containerId, rows, columns) {
+function renderRawDbTable(containerId, rows, columns) {
   const container = document.getElementById(containerId);
+  if (!container) return;
+
   if (!rows || rows.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted); padding:12px; font-size:0.82rem;">No records found in this table.</p>';
+    container.innerHTML = '<p style="color:var(--text-muted); padding:12px; font-size:0.8rem;">No records found in this table.</p>';
     return;
   }
 
-  let html = '<table class="db-table"><thead><tr>';
+  let html = '<table class="db-raw-table"><thead><tr>';
   columns.forEach((col) => (html += `<th>${col}</th>`));
   html += '</tr></thead><tbody>';
 
@@ -305,7 +493,7 @@ function renderTable(containerId, rows, columns) {
     columns.forEach((col) => {
       let val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
       if (val.length > 70) val = val.slice(0, 70) + '...';
-      html += `<td title="${String(row[col] || '')}">${val}</td>`;
+      html += `<td title="${escapeText(String(row[col] || ''))}">${escapeText(val)}</td>`;
     });
     html += '</tr>';
   });
