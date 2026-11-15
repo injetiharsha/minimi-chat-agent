@@ -110,16 +110,9 @@ app.post('/api/chat', async (c) => {
   return streamSSE(c, async (stream) => {
     const startTime = Date.now();
     let firstTokenReceived = false;
-
-    // Start live thinking state with real-time timer
-    await stream.writeSSE({
-      event: 'telemetry',
-      data: JSON.stringify({
-        id: 'thinking',
-        status: 'running',
-        title: 'Thinking',
-      }),
-    });
+    let currentToolId = '';
+    let currentToolLabel = '';
+    let toolStartTime = Date.now();
 
     try {
       const targetProvider = provider || process.env.LLM_PROVIDER || 'google';
@@ -172,10 +165,13 @@ app.post('/api/chat', async (c) => {
             } else if (part.type === 'tool-call') {
               const calledEntities = (part as any).args?.items?.map((i: any) => i.entity).filter(Boolean) || [];
               const label = calledEntities.length > 0 ? calledEntities.join(', ') : 'live web sources';
+              currentToolId = 'tool-' + Date.now();
+              currentToolLabel = label;
+              toolStartTime = Date.now();
               await stream.writeSSE({
                 event: 'telemetry',
                 data: JSON.stringify({
-                  id: 'tool-' + Date.now(),
+                  id: currentToolId,
                   status: 'running',
                   title: `Ran web_search for ${label}`,
                 }),
@@ -187,12 +183,14 @@ app.post('/api/chat', async (c) => {
                 }),
               });
             } else if (part.type === 'tool-result') {
+              const durSec = Math.max(0.1, Math.round((Date.now() - toolStartTime) / 100) / 10);
               await stream.writeSSE({
                 event: 'telemetry',
                 data: JSON.stringify({
-                  id: 'tool-done-' + Date.now(),
+                  id: currentToolId || ('tool-' + Date.now()),
                   status: 'done',
-                  title: `Search complete`,
+                  title: `Ran web_search for ${currentToolLabel || 'live web sources'}`,
+                  time: `${durSec}s`,
                 }),
               });
             } else if (part.type === 'error') {

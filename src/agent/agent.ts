@@ -55,7 +55,9 @@ export class AgentService {
         }
       }
 
-      const response = await fetch(url, init);
+      const timeoutSignal = AbortSignal.timeout(8000);
+      const activeSignal = init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+      const response = await fetch(url, { ...init, signal: activeSignal });
       const contentType = response.headers.get('content-type') || '';
 
       if (contentType.includes('application/json')) {
@@ -314,7 +316,8 @@ export class AgentService {
       tools: {
         web_search: searchToolInstance,
       },
-      maxSteps: 5,
+      maxSteps: 2,
+      maxRetries: 0,
     });
 
     return {

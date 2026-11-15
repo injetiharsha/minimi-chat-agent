@@ -769,6 +769,14 @@ class LiveTelemetryManager {
     clearInterval(this.timerInterval);
     const sec = totalSeconds || Math.max(1, Math.round((Date.now() - this.startTime) / 1000));
 
+    // Convert any lingering spinners across all steps into clean completed checks
+    this.stepsMap.forEach((item) => {
+      const spinner = item.querySelector('.telemetry-spinner');
+      if (spinner) {
+        spinner.outerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+      }
+    });
+
     if (this.thinkingStep) {
       this.thinkingStep.innerHTML = `
         <div class="reasoning-step-header">
@@ -880,11 +888,11 @@ chatForm.addEventListener('submit', async (e) => {
 
   // Selected Model & Provider
   let selectedProvider = 'google';
-  let selectedModel = 'gemini-3.8-flash';
+  let selectedModel = 'gemini-3.5-flash-lite';
   if (modelSelect && modelSelect.value) {
     const parts = modelSelect.value.split(':');
     selectedProvider = parts[0] || 'google';
-    selectedModel = parts[1] || 'gemini-3.8-flash';
+    selectedModel = parts[1] || 'gemini-3.5-flash-lite';
   }
 
   try {
@@ -922,7 +930,9 @@ chatForm.addEventListener('submit', async (e) => {
             // Live sequential telemetry step event
             if (data.id && (data.status === 'running' || data.status === 'done')) {
               if (data.id === 'thinking' && data.status === 'done') {
-                telemetryManager.finalize();
+                telemetryManager.finalize(data.totalSeconds);
+              } else if (data.id === 'thinking' && data.status === 'running') {
+                // Ignore duplicate running event
               } else {
                 telemetryManager.handleStep(data);
               }
@@ -943,6 +953,7 @@ chatForm.addEventListener('submit', async (e) => {
             }
             // Done event
             else if (data.success && streamRenderer) {
+              telemetryManager.finalize();
               streamRenderer.finalize();
               appendAssistantFooter(assistantBubble, streamRenderer.getText());
               recordTurn(threadId, 'assistant', streamRenderer.getText());
@@ -963,6 +974,7 @@ chatForm.addEventListener('submit', async (e) => {
       chatViewport.scrollTop = chatViewport.scrollHeight;
     }
 
+    telemetryManager.finalize();
     if (streamRenderer && assistantBubble && !assistantBubble.querySelector('.msg-footer')) {
       streamRenderer.finalize();
       appendAssistantFooter(assistantBubble, streamRenderer.getText());

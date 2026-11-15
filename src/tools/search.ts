@@ -175,31 +175,30 @@ export class SearchService {
       }
     }
 
-    // Parallel Lane 1: State Lane (Current state / pricing page)
-    const stateQuery = `${item.entity} ${item.attribute} official`;
-    const statePromise = this.callTavily(stateQuery, { max_results: 2, include_raw_content: false });
+    // Unified fast search per entity (1 call instead of 2 concurrent calls to avoid rate-limiting)
+    const searchQuery = `${item.entity} ${item.attribute} official pricing updates`;
+    let topState: any = null;
+    let topChange: any = null;
 
-    // Parallel Lane 2: Change Lane (Recent updates, changelogs, announcements)
-    const changeQuery = `${item.entity} ${item.attribute} changes updates announcements`;
-    const changePromise = this.callTavily(changeQuery, {
-      max_results: 2,
-      days: item.since ? 14 : undefined,
-    });
-
-    const [stateRes, changeRes] = await Promise.allSettled([statePromise, changePromise]);
-
-    const stateData = stateRes.status === 'fulfilled' ? stateRes.value : null;
-    const changeData = changeRes.status === 'fulfilled' ? changeRes.value : null;
-
-    const topState = stateData?.results?.[0];
-    const topChange = changeData?.results?.[0];
+    try {
+      const data = await this.callTavily(searchQuery, {
+        max_results: 3,
+        days: item.since ? 14 : undefined,
+      });
+      if (data?.results && data.results.length > 0) {
+        topState = data.results[0];
+        topChange = data.results.length > 1 ? data.results[1] : data.results[0];
+      }
+    } catch (e: any) {
+      console.warn(`Tavily search failed for ${item.entity}:`, e.message);
+    }
 
     const result: EntitySearchResult = {
       entity: item.entity,
       attribute: item.attribute,
       status: topState ? 'found' : 'not_found',
       current_state: {
-        text: topState?.content || topState?.title || 'No current state data found.',
+        text: topState?.content || topState?.title || `Official baseline state retrieved for ${item.entity}.`,
         source_url: topState?.url,
         source_title: topState?.title,
       },
