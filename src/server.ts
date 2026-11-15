@@ -435,7 +435,6 @@ app.post('/api/chat', async (c) => {
               time: '0.04s',
             }),
           });
-        }
         } else if (part.type === 'error') {
           console.warn('fullStream error part encountered:', (part as any).error);
           throw new Error((part as any).error?.message || 'Model stream error');
