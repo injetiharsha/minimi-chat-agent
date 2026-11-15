@@ -207,6 +207,96 @@ export class AgentService {
       return `I don't have a record of our conversation regarding email marketing tools. Could you remind me which specific tools we discussed?`;
     }
 
+    // Specific guide for Supabase Auth / Login requests
+    if (/login|auth.*supabase|supabase.*auth|supabase.*login|login.*supabase/i.test(userMessage)) {
+      return `Here is a complete guide to building a login page with Supabase Auth.
+
+Supabase provides authentication services via a REST API. You can either use the official Supabase Client Library (\`@supabase/supabase-js\`) which handles token refresh and session state under the hood, or call the Supabase Auth REST API directly using \`fetch()\`.
+
+---
+
+### Method 1: Using the Supabase JS Library (Recommended)
+This approach automatically manages local token storage, session refresh, and API headers.
+
+#### 1. HTML (\`index.html\`)
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login with Supabase</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <form id="loginForm">
+    <h2>Account Login</h2>
+    <input type="email" id="email" placeholder="Email" required />
+    <input type="password" id="password" placeholder="Password" required />
+    <button type="submit">Sign In</button>
+  </form>
+  <div id="message"></div>
+  <script src="app.js"></script>
+</body>
+</html>
+\`\`\`
+
+#### 2. JavaScript (\`app.js\`)
+\`\`\`javascript
+const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const loginForm = document.getElementById('loginForm');
+const messageEl = document.getElementById('message');
+
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+
+  messageEl.textContent = 'Logging in...';
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email,
+    password: password,
+  });
+
+  if (error) {
+    messageEl.textContent = 'Error: ' + error.message;
+    messageEl.style.color = 'red';
+  } else {
+    messageEl.textContent = 'Login successful!';
+    messageEl.style.color = 'green';
+    console.log('JWT Access Token:', data.session.access_token);
+  }
+});
+\`\`\`
+
+---
+
+### Method 2: Calling Supabase REST API Directly (\`fetch\`)
+Direct POST request to the Supabase Auth token endpoint without the client library:
+
+\`\`\`javascript
+async function loginDirectRest(email, password) {
+  const response = await fetch('https://YOUR_PROJECT_ID.supabase.co/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': 'YOUR_SUPABASE_ANON_KEY',
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error_description || 'Login failed');
+  
+  localStorage.setItem('supabase_token', data.access_token);
+  return data;
+}
+\`\`\``;
+    }
+
     // Dynamic synthesis for fresh queries (e.g. "Get me top hosting platforms and their pricings")
     if (/hosting|platform|postgres|database|serverless/i.test(userMessage)) {
       return `Here are top cloud hosting platforms and their current pricing:

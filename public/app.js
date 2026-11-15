@@ -23,7 +23,7 @@ const dbModal = document.getElementById('db-modal');
 const btnToggleDb = document.getElementById('btn-toggle-db');
 const btnCloseDb = document.getElementById('btn-close-db');
 
-// Placeholder: keep completely blank as requested
+// Blank input placeholder as requested
 userInput.placeholder = '';
 
 // Live Clock
@@ -180,14 +180,66 @@ async function switchThread(id, title) {
   }
 }
 
+// Clipboard Helper
+async function copyToClipboard(text, btnElement, successLabel = 'Copied!') {
+  try {
+    await navigator.clipboard.writeText(text);
+    const origHtml = btnElement.innerHTML;
+    btnElement.innerHTML = `
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      <span>${successLabel}</span>
+    `;
+    setTimeout(() => {
+      btnElement.innerHTML = origHtml;
+    }, 2000);
+  } catch (err) {
+    console.warn('Clipboard write failed:', err);
+  }
+}
+
 function renderPastMessageBubble(role, content) {
-  const wrapper = document.createElement('div');
-  wrapper.className = `msg-wrapper ${role}`;
-  const bubble = document.createElement('div');
-  bubble.className = 'chat-bubble';
-  bubble.innerHTML = renderMarkdown(content);
-  wrapper.appendChild(bubble);
-  messagesList.appendChild(wrapper);
+  if (role === 'user') {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper user';
+    wrapper.innerHTML = `
+      <div class="user-msg-group">
+        <button class="btn-copy-user" title="Copy message">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+        <div class="chat-bubble">${escapeText(content)}</div>
+      </div>
+    `;
+    const copyBtn = wrapper.querySelector('.btn-copy-user');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => copyToClipboard(content, copyBtn, '✓'));
+    }
+    messagesList.appendChild(wrapper);
+  } else {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'msg-wrapper assistant';
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    bubble.innerHTML = renderMarkdown(content);
+
+    // Assistant copy footer
+    const footer = document.createElement('div');
+    footer.className = 'msg-footer';
+    footer.innerHTML = `
+      <span class="msg-timestamp">Saved turn</span>
+      <button class="btn-copy-msg" title="Copy response">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        <span>Copy</span>
+      </button>
+    `;
+    const copyBtn = footer.querySelector('.btn-copy-msg');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => copyToClipboard(content, copyBtn));
+    }
+    bubble.appendChild(footer);
+    wrapper.appendChild(bubble);
+    messagesList.appendChild(wrapper);
+    attachCopyHandlers(bubble);
+  }
 }
 
 // Evaluation Presets
@@ -319,17 +371,22 @@ document.querySelectorAll('.quick-card').forEach((card) => {
   });
 });
 
-// Clean Markdown & Table Parser
-// Key rule: Bold the important facts/charges ($25/mo, $49/mo, Changed).
-// Unchanged items remain normal clean text without loud badges.
+// Full Markdown Parser with Fenced Code Blocks & Table Copy
 function renderMarkdown(text) {
   if (!text) return '';
+
+  // Normalize pipe tables where rows were separated by || instead of newline
+  text = text.replace(/\|\s*\|\s*/g, '|\n|');
 
   const lines = text.split('\n');
   const result = [];
   let inTable = false;
   let tableHeader = [];
   let tableRows = [];
+
+  let inCodeBlock = false;
+  let codeLang = '';
+  let codeLines = [];
 
   function formatInline(cell) {
     let c = cell.trim();
@@ -339,8 +396,8 @@ function renderMarkdown(text) {
     c = c.replace(/\*(.*?)\*/g, '<em>$1</em>');
     // Inline code
     c = c.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    // Status text formatting:
-    // "No change found" is normal plain text (not bolded, not badged)
+    // Status formatting:
+    // "No change found" is normal plain text
     c = c.replace(/`?\[?No change found\]?`?/gi, '<span style="color:var(--text-sub);">No change found</span>');
     // "Changed" IS important, so it is bolded
     c = c.replace(/`?\[?Changed\]?`?/gi, '<strong style="color:var(--text-main);">Changed</strong>');
@@ -353,7 +410,9 @@ function renderMarkdown(text) {
 
   function flushTable() {
     if (tableHeader.length > 0) {
-      let html = '<div class="table-wrapper"><table class="markdown-table"><thead><tr>';
+      let html = '<div class="table-wrapper">';
+      html += '<div class="table-header-toolbar"><span>Verification Matrix</span><button class="btn-copy-table" title="Copy table content"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg><span>Copy Table</span></button></div>';
+      html += '<table class="markdown-table"><thead><tr>';
       tableHeader.forEach((h) => (html += `<th>${formatInline(h)}</th>`));
       html += '</tr></thead><tbody>';
       tableRows.forEach((row) => {
@@ -373,11 +432,36 @@ function renderMarkdown(text) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
 
-    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
-      const cells = trimmed
-        .slice(1, -1)
-        .split('|')
-        .map((s) => s.trim());
+    // Fenced Code Block Detection
+    if (trimmed.startsWith('```')) {
+      if (inTable) flushTable();
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeLang = trimmed.slice(3).trim();
+        codeLines = [];
+      } else {
+        // Close code block
+        const rawCode = codeLines.join('\n');
+        result.push(renderCodeBlock(rawCode, codeLang));
+        inCodeBlock = false;
+        codeLines = [];
+        codeLang = '';
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(rawLine);
+      continue;
+    }
+
+    // Table Line Detection (robust with or without trailing pipes)
+    const isTableLine = trimmed.startsWith('|') && trimmed.includes('|', 1);
+    if (isTableLine) {
+      let clean = trimmed;
+      if (clean.startsWith('|')) clean = clean.slice(1);
+      if (clean.endsWith('|')) clean = clean.slice(0, -1);
+      const cells = clean.split('|').map((s) => s.trim());
       const isSep = cells.every((c) => /^:?-+:?$/.test(c));
       if (isSep) continue;
 
@@ -407,60 +491,101 @@ function renderMarkdown(text) {
     }
   }
 
+  if (inCodeBlock) {
+    result.push(renderCodeBlock(codeLines.join('\n'), codeLang));
+  }
   if (inTable) flushTable();
+
   return result.join('');
 }
 
-// Antigravity-Style Dynamic Reasoning Widget
-function createDynamicReasoningWidget(steps) {
-  const container = document.createElement('div');
-  container.className = 'reasoning-block open';
-
-  const header = document.createElement('div');
-  header.className = 'reasoning-header';
-  header.innerHTML = `
-    <div class="reasoning-title-group">
-      <svg class="reasoning-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <polyline points="9 18 15 12 9 6"></polyline>
-      </svg>
-      <span>Reasoning Steps</span>
-      <span class="reasoning-step-count">${steps.length} steps</span>
-    </div>
-    <span class="reasoning-toggle-hint" style="font-size:0.72rem; color:var(--text-muted);">Collapse</span>
-  `;
-
-  const body = document.createElement('div');
-  body.className = 'reasoning-body';
-  body.innerHTML = steps
-    .map(
-      (s) => `
-    <div class="reasoning-step-item">
-      <svg class="telemetry-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted); margin-top:3px; flex-shrink:0;">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
-      <div class="step-text">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <strong style="color:var(--text-main); font-weight:600;">${escapeText(s.title)}</strong>
-          ${s.time ? `<span style="font-family:var(--font-mono); font-size:0.68rem; color:var(--text-muted);">${escapeText(s.time)}</span>` : ''}
-        </div>
-        <div style="color:var(--text-sub); font-size:0.76rem; margin-top:2px;">${escapeText(s.detail)}</div>
+function renderCodeBlock(code, lang) {
+  const language = lang || 'code';
+  return `
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span class="code-language">${escapeText(language)}</span>
+        <button class="btn-copy-code" title="Copy code snippet">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span>Copy</span>
+        </button>
       </div>
+      <pre class="code-content"><code>${escapeText(code)}</code></pre>
     </div>
-  `
-    )
-    .join('');
+  `;
+}
 
-  header.addEventListener('click', () => {
-    container.classList.toggle('open');
-    const hint = header.querySelector('.reasoning-toggle-hint');
-    if (hint) {
-      hint.textContent = container.classList.contains('open') ? 'Collapse' : 'Expand';
-    }
+function attachCopyHandlers(container) {
+  // Code block copy buttons
+  container.querySelectorAll('.btn-copy-code').forEach((btn) => {
+    btn.onclick = () => {
+      const code = btn.closest('.code-wrapper')?.querySelector('code')?.textContent || '';
+      copyToClipboard(code, btn);
+    };
   });
 
-  container.appendChild(header);
-  container.appendChild(body);
-  return container;
+  // Table copy buttons
+  container.querySelectorAll('.btn-copy-table').forEach((btn) => {
+    btn.onclick = () => {
+      const table = btn.closest('.table-wrapper')?.querySelector('table');
+      if (table) {
+        let tsv = '';
+        table.querySelectorAll('tr').forEach((row) => {
+          const cells = Array.from(row.querySelectorAll('th, td')).map((c) => c.innerText.trim());
+          tsv += cells.join('\t') + '\n';
+        });
+        copyToClipboard(tsv, btn, 'Table Copied!');
+      }
+    };
+  });
+}
+
+// Live Antigravity Telemetry Manager (Clean Frameless Stream)
+class LiveTelemetryManager {
+  constructor(parentContainer) {
+    this.parent = parentContainer;
+    this.stepsMap = new Map();
+
+    this.container = document.createElement('div');
+    this.container.className = 'reasoning-block';
+    this.parent.appendChild(this.container);
+  }
+
+  handleStep(data) {
+    let item = this.stepsMap.get(data.id);
+    if (!item) {
+      item = document.createElement('div');
+      item.className = 'reasoning-step-item';
+      this.container.appendChild(item);
+      this.stepsMap.set(data.id, item);
+    }
+
+    const isRunning = data.status === 'running';
+    item.innerHTML = `
+      <div class="reasoning-step-header">
+        <div class="reasoning-step-left">
+          ${isRunning 
+            ? '<div class="telemetry-spinner"></div>' 
+            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>'}
+          <span class="reasoning-step-title">${escapeText(data.title)}</span>
+        </div>
+        <div class="reasoning-step-right">
+          ${data.time ? `<span class="reasoning-step-time">${escapeText(data.time)}</span>` : ''}
+          <svg class="reasoning-step-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div class="reasoning-step-detail">${escapeText(data.detail || '')}</div>
+    `;
+
+    const headerEl = item.querySelector('.reasoning-step-header');
+    if (headerEl) {
+      headerEl.onclick = () => {
+        item.classList.toggle('open');
+      };
+    }
+  }
 }
 
 function escapeText(str) {
@@ -473,8 +598,8 @@ function escapeText(str) {
 }
 
 // Staged Non-Glitching Stream Renderer:
-// If it's text, it streams tokens smoothly with requestAnimationFrame.
-// If it's a table, table lines are buffered and the complete table renders at once!
+// - Text streams smoothly with requestAnimationFrame
+// - Table and Code blocks buffer cleanly to prevent flickering DOM churn
 function createStreamRenderer(targetContainer) {
   let rawText = '';
   let renderScheduled = false;
@@ -482,12 +607,12 @@ function createStreamRenderer(targetContainer) {
   function update() {
     renderScheduled = false;
 
-    // Check if table is currently in progress
+    // Check if table or code block is halfway through being written
     const lines = rawText.split('\n');
+    const hasUnclosedCode = (rawText.match(/```/g) || []).length % 2 === 1;
     const hasActiveTable = lines.some((l) => l.trim().startsWith('|'));
 
-    if (hasActiveTable) {
-      // Find where table starts
+    if (hasActiveTable && !hasUnclosedCode) {
       const firstTableIdx = lines.findIndex((l) => l.trim().startsWith('|'));
       const textBeforeTable = lines.slice(0, firstTableIdx).join('\n');
       const tableLines = lines.slice(firstTableIdx);
@@ -497,13 +622,19 @@ function createStreamRenderer(targetContainer) {
 
       if (isTableFinished) {
         targetContainer.innerHTML = renderMarkdown(rawText);
+        attachCopyHandlers(targetContainer);
       } else {
-        // Render text before table smoothly; avoid glitching table until closed
         targetContainer.innerHTML = renderMarkdown(textBeforeTable) + '<div style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;">Formatting verified table...</div>';
       }
+    } else if (hasUnclosedCode) {
+      // Don't break DOM on half-written code blocks
+      const firstCodeIdx = lines.findIndex((l) => l.trim().startsWith('```'));
+      const textBeforeCode = lines.slice(0, firstCodeIdx).join('\n');
+      targetContainer.innerHTML = renderMarkdown(textBeforeCode) + '<div style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;">Synthesizing implementation...</div>';
     } else {
-      // Clean regular prose tokens stream smoothly
+      // Standard smooth prose stream
       targetContainer.innerHTML = renderMarkdown(rawText);
+      attachCopyHandlers(targetContainer);
     }
   }
 
@@ -516,8 +647,8 @@ function createStreamRenderer(targetContainer) {
       }
     },
     finalize() {
-      // Instant complete render of final markdown
       targetContainer.innerHTML = renderMarkdown(rawText);
+      attachCopyHandlers(targetContainer);
     },
     getText() {
       return rawText;
@@ -538,10 +669,21 @@ chatForm.addEventListener('submit', async (e) => {
   // 1. Record user turn
   recordTurn(threadId, 'user', query);
 
-  // 2. Render user message bubble
+  // 2. Render user message bubble with copy button
   const userWrapper = document.createElement('div');
   userWrapper.className = 'msg-wrapper user';
-  userWrapper.innerHTML = `<div class="chat-bubble">${escapeText(query)}</div>`;
+  userWrapper.innerHTML = `
+    <div class="user-msg-group">
+      <button class="btn-copy-user" title="Copy prompt">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      </button>
+      <div class="chat-bubble">${escapeText(query)}</div>
+    </div>
+  `;
+  const copyUserBtn = userWrapper.querySelector('.btn-copy-user');
+  if (copyUserBtn) {
+    copyUserBtn.addEventListener('click', () => copyToClipboard(query, copyUserBtn, '✓'));
+  }
   messagesList.appendChild(userWrapper);
 
   // 3. Prepare assistant wrapper (NO empty chat bubble box created yet!)
@@ -551,7 +693,7 @@ chatForm.addEventListener('submit', async (e) => {
 
   chatViewport.scrollTop = chatViewport.scrollHeight;
 
-  let reasoningBlock = null;
+  let telemetryManager = null;
   let assistantBubble = null;
   let streamRenderer = null;
 
@@ -585,10 +727,13 @@ chatForm.addEventListener('submit', async (e) => {
           try {
             const data = JSON.parse(line.slice(6));
 
-            // Dynamic telemetry reasoning steps
-            if (data.steps && !reasoningBlock) {
-              reasoningBlock = createDynamicReasoningWidget(data.steps);
-              assistantWrapper.appendChild(reasoningBlock);
+            // Live sequential telemetry step event
+            if (data.id && (data.status === 'running' || data.status === 'done')) {
+              if (!telemetryManager) {
+                telemetryManager = new LiveTelemetryManager(assistantWrapper);
+              }
+              telemetryManager.handleStep(data);
+              chatViewport.scrollTop = chatViewport.scrollHeight;
             }
             // Token generation
             else if (data.delta) {
@@ -605,6 +750,7 @@ chatForm.addEventListener('submit', async (e) => {
             // Done event
             else if (data.success && streamRenderer) {
               streamRenderer.finalize();
+              appendAssistantFooter(assistantBubble, streamRenderer.getText());
               recordTurn(threadId, 'assistant', streamRenderer.getText());
             }
             // Error event
@@ -622,8 +768,9 @@ chatForm.addEventListener('submit', async (e) => {
       chatViewport.scrollTop = chatViewport.scrollHeight;
     }
 
-    if (streamRenderer) {
+    if (streamRenderer && !assistantBubble.querySelector('.msg-footer')) {
       streamRenderer.finalize();
+      appendAssistantFooter(assistantBubble, streamRenderer.getText());
       recordTurn(threadId, 'assistant', streamRenderer.getText());
     }
   } catch (err) {
@@ -635,6 +782,24 @@ chatForm.addEventListener('submit', async (e) => {
     assistantBubble.innerHTML = `<span style="color:#ef4444;">${escapeText(err.message)}</span>`;
   }
 });
+
+function appendAssistantFooter(bubble, text) {
+  if (bubble.querySelector('.msg-footer')) return;
+  const footer = document.createElement('div');
+  footer.className = 'msg-footer';
+  footer.innerHTML = `
+    <span class="msg-timestamp">Just now</span>
+    <button class="btn-copy-msg" title="Copy response">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Copy</span>
+    </button>
+  `;
+  const copyBtn = footer.querySelector('.btn-copy-msg');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => copyToClipboard(text, copyBtn));
+  }
+  bubble.appendChild(footer);
+}
 
 // Database Inspector Modal
 if (btnToggleDb && dbModal) {
