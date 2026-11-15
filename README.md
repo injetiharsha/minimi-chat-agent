@@ -4,7 +4,6 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-68a063.svg?style=flat-square&logo=node.js)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Vercel AI SDK](https://img.shields.io/badge/Vercel_AI_SDK-v4-black.svg?style=flat-square)](https://sdk.vercel.ai/)
 [![Hono](https://img.shields.io/badge/Hono-v4-E36002.svg?style=flat-square&logo=hono)](https://hono.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-sql.js_WASM-003B57.svg?style=flat-square&logo=sqlite)](https://sqlite.org/)
 
@@ -14,8 +13,8 @@
 
 ### 1. Prerequisites
 - **Node.js 20+**
-- **Google Gemini API Key** (Default model: `gemini-3.8-flash`)
-- **Tavily API Key** (Search provider with real-time web grounding; if omitted, falls back to deterministic offline mock fixtures)
+- **Google Gemini API Key** (Default model: `gemini-3.5-flash-lite`, with instant fallback to `gemini-flash-lite-latest` and `gemini-3-flash-preview`)
+- **Tavily API Key** (Live web grounding; if omitted, falls back to deterministic offline mock fixtures)
 
 ### 2. Installation
 ```bash
@@ -39,6 +38,10 @@ TAVILY_API_KEY="your_tavily_api_key"
 
 # Port (default 3000)
 PORT=3000
+
+# Optional Multi-Provider Keys (Enables GPT-4o and Claude in the UI popover)
+# OPENAI_API_KEY="your_openai_api_key"
+# ANTHROPIC_API_KEY="your_anthropic_api_key"
 ```
 
 ### 4. Run Development Server
@@ -51,7 +54,7 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ## 🧪 Automated Evaluation Suite
 
-To run the deterministic evaluation harness covering all three challenge scenarios plus memory boundary checks:
+To run the offline evaluation harness covering the challenge scenarios plus memory boundary checks:
 ```bash
 npm run eval
 ```
@@ -63,7 +66,7 @@ This validates:
 
 ---
 
-## 🎯 Hiring Challenge Alignment & Design Invariants
+## 🎯 Hiring Challenge Requirements Matrix
 
 | Challenge Requirement | Implementation |
 |---|---|
@@ -72,87 +75,11 @@ This validates:
 | **Simple Run Contract** | `npm install` then `npm run dev` |
 | **API Keys Documented** | Listed clearly in `.env.example` |
 | **1-Page Architecture Document** | Fully documented in [`DESIGN.md`](./DESIGN.md) |
-| **Temporal Knowledge Decay** | Two-Lane Search architecture separating official pricing (`State Lane`) from changelogs/announcements (`Change Lane`) |
+| **Temporal Knowledge Decay** | Two-Lane Search architecture separating official pricing from changelogs/announcements |
+| **Multi-Model Resilience** | Automatic zero-retry failover cascade across Gemini 3.x models + optional OpenAI & Claude support |
 
 ---
 
-## 🏛️ Architecture Overview
+## 🏛️ Architecture & Highlights
 
-```mermaid
-flowchart TD
-    UserQuery["User Message (e.g., 'Has CRM pricing changed since Monday?')"] --> PreModel["Deterministic Context Engine (chrono-node)"]
-    
-    subgraph Deterministic Assembly
-        PreModel --> TimeWindow["1. Extract Temporal Bounds (Monday = 2026-11-09)"]
-        PreModel --> DBQuery["2. Query SQLite EAV Observations & Turns"]
-        DBQuery --> Preamble["3. Instant UI Preamble (0ms TTFB)"]
-    end
-
-    TimeWindow & DBQuery --> SystemPrompt["Assemble System Prompt + Grounded History"]
-    SystemPrompt --> LLM["LLM Turn (gemini-3.8-flash via Vercel AI SDK)"]
-    
-    subgraph Single Tool Boundary: web_search
-        LLM --> SingleTool["web_search({ items })"]
-        SingleTool --> StateLane["State Lane: Official Pricing (Undated/Canonical)"]
-        SingleTool --> ChangeLane["Change Lane: Changelogs & News (Filtered by Date)"]
-        StateLane & ChangeLane --> Tavily["Tavily Search API / Cache"]
-    end
-    
-    Tavily --> PostVerify["Post-Model Verbatim Number Verification"]
-    PostVerify --> OutputTable["Verification Delta Table: Changed, No change found, Unverified"]
-    OutputTable --> Persist["Persist New Turns to SQLite (data/minimi.db)"]
-```
-
-### Why Built This Way
-1. **Deterministic Memory vs LLM Recall:** Asking an LLM to search its own memory via a tool causes hallucinations and multi-turn latency penalties. Our pre-model context engine parses relative dates (`"on Monday"`, `"last Tuesday"`, `"3 November"`) deterministically using `chrono-node`, retrieves corresponding threads from SQLite, and injects grounded baseline observations into the prompt before the first token is generated.
-2. **Two-Lane Web Search:** Live pricing pages are rarely stamped with publishing dates. Standard date-filtered search drops official pricing pages entirely. Our `web_search` tool fans out parallel queries into a **State Lane** (canonical pricing) and a **Change Lane** (changelogs, blogs, press releases filtered by `start_date = baseline`).
-3. **Verbatim Numbers Contract:** Numbers and currencies in the output must exist verbatim in the scraped search text. If numbers cannot be matched, the agent explicitly tags them as `[Unverified]` or `[Not comparable]`.
-4. **Zero-Dependency SQLite Persistence:** Uses WebAssembly `sql.js` with disk backup to `data/minimi.db`, guaranteeing instant zero-compilation startup on any OS (macOS, Windows, Linux) without requiring C++ build tools.
-
----
-
-## 🖥️ UI & Grader Features
-
-The web frontend at `http://localhost:3000` is built with a macOS-inspired dark theme featuring:
-- **Live System Clock & Timezone Display** in the header.
-- **Grader 1-Click Preset Buttons:** Instantly seed the exact challenge test datasets into SQLite with one click:
-  - ⚡ *CRM Shortlist (Monday)*
-  - ⚡ *Postgres Hosting (Last Tuesday)*
-  - ⚡ *Question on 3 Nov*
-- **Real-Time SSE Streaming:** Displays streaming tokens, live web search status indicators, and pre-model preamble badges.
-
----
-
-## 📁 Repository Structure
-
-```
-minimi-chat-agent/
-├── data/                      # Local SQLite database persistence (minimi.db)
-├── public/                    # Frontend UI (HTML, CSS, Vanilla JS)
-│   ├── index.html             # macOS-inspired chat interface with grader presets
-│   ├── style.css              # Typography & dark mode design
-│   └── app.js                 # EventSource SSE client & state management
-├── src/
-│   ├── agent/
-│   │   ├── agent.ts           # Vercel AI SDK integration & single-tool executor
-│   │   ├── context.ts         # chrono-node date parsing & deterministic assembly
-│   │   └── prompt.ts          # System prompt & verification output formatting rules
-│   ├── db/
-│   │   ├── client.ts          # sql.js WASM SQLite client & EAV observations
-│   │   └── schema.sql         # Universal SQLite schema (threads, turns, observations)
-│   ├── tools/
-│   │   └── search.ts          # Strictly single web_search tool (Two-Lane engine)
-│   ├── eval.ts                # Deterministic evaluation test harness
-│   └── server.ts              # Hono HTTP server & SSE endpoints
-├── .env.example               # Environment template
-├── .gitignore                 # Node, dist, and database ignores
-├── DESIGN.md                  # Comprehensive architecture design document
-├── package.json               # Node.js dependencies & scripts
-├── tsconfig.json              # TypeScript compilation configuration
-└── README.md                  # Project overview & documentation
-```
-
----
-
-## 📜 License
-MIT License. Built by Harsha Injeti for the minimi engineering challenge.
+For a complete breakdown of design decisions, tradeoffs, and future work, read **[`DESIGN.md`](./DESIGN.md)**.

@@ -37,6 +37,83 @@ app.get('/health', (c) => {
   });
 });
 
+// Dynamic Provider & Available Models endpoint
+app.get('/api/models', (c) => {
+  const hasGoogle = Boolean(process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+  const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasTavily = Boolean(process.env.TAVILY_API_KEY);
+
+  const models = [
+    {
+      id: 'gemini-3.5-flash-lite',
+      provider: 'google',
+      name: 'Gemini 3.5 Flash Lite',
+      badge: 'Fast & Active',
+      available: hasGoogle,
+      isDefault: true,
+    },
+    {
+      id: 'gemini-flash-lite-latest',
+      provider: 'google',
+      name: 'Gemini Flash Lite Latest',
+      badge: 'Active',
+      available: hasGoogle,
+      isDefault: false,
+    },
+    {
+      id: 'gemini-3-flash-preview',
+      provider: 'google',
+      name: 'Gemini 3 Flash Preview',
+      badge: 'Active',
+      available: hasGoogle,
+      isDefault: false,
+    },
+    {
+      id: 'gemini-3.8-flash',
+      provider: 'google',
+      name: 'Gemini 3.8 Flash',
+      badge: 'High Demand',
+      available: hasGoogle,
+      isDefault: false,
+    },
+    {
+      id: 'gpt-4o',
+      provider: 'openai',
+      name: 'OpenAI GPT-4o',
+      badge: hasOpenAI ? 'Ready' : 'Needs API Key',
+      available: hasOpenAI,
+      isDefault: false,
+    },
+    {
+      id: 'gpt-4o-mini',
+      provider: 'openai',
+      name: 'OpenAI GPT-4o Mini',
+      badge: hasOpenAI ? 'Fast' : 'Needs API Key',
+      available: hasOpenAI,
+      isDefault: false,
+    },
+    {
+      id: 'claude-3-5-sonnet-20241022',
+      provider: 'anthropic',
+      name: 'Claude 3.5 Sonnet',
+      badge: hasAnthropic ? 'Ready' : 'Needs API Key',
+      available: hasAnthropic,
+      isDefault: false,
+    },
+  ];
+
+  return c.json({
+    providers: {
+      google: hasGoogle,
+      openai: hasOpenAI,
+      anthropic: hasAnthropic,
+      tavily: hasTavily,
+    },
+    models,
+  });
+});
+
 // Database Inspection endpoint
 app.get('/api/db', (c) => {
   const threads = db.exportRows('SELECT id, title, created_at FROM threads ORDER BY created_at DESC');

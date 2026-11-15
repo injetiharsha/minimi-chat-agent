@@ -53,11 +53,7 @@
       </div>
 
       <div class="sidebar-footer">
-        <div class="engine-badge">
-          <span class="engine-status"></span>
-          <span>gemini-3.5-flash / tavily</span>
-        </div>
-        <button id="btn-toggle-db" class="btn-db-subtle">Inspect Database</button>
+        <div class="sidebar-version">Minimi v1.0 • Temporal Agent</div>
       </div>
     </aside>
 
@@ -76,15 +72,6 @@
         </div>
 
         <div class="top-nav-right">
-          <select id="model-select" class="model-select" title="Choose LLM Provider & Model">
-            <option value="google:gemini-3.5-flash-lite" selected>Gemini 3.5 Flash Lite (Fast & Active)</option>
-            <option value="google:gemini-flash-lite-latest">Gemini Flash Lite Latest</option>
-            <option value="google:gemini-3-flash-preview">Gemini 3 Flash Preview</option>
-            <option value="google:gemini-3.8-flash">Gemini 3.8 Flash (Auto Cascade 3.x)</option>
-            <option value="openai:gpt-4o">OpenAI GPT-4o</option>
-            <option value="openai:gpt-4o-mini">OpenAI GPT-4o Mini</option>
-            <option value="anthropic:claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-          </select>
           <span class="clock-tag" id="clock-display">--:--</span>
         </div>
       </header>
@@ -131,40 +118,46 @@
               rows="1"
               placeholder=""
             ></textarea>
-            <button type="submit" class="submit-btn" id="btn-submit" title="Send message">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <line x1="12" y1="19" x2="12" y2="5"></line>
-                <polyline points="5 12 12 5 19 12"></polyline>
-              </svg>
-            </button>
+            
+            <div class="input-toolbar">
+              <div class="input-toolbar-left">
+                <button type="button" class="btn-input-tool" title="Add action">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+
+                <div class="model-picker-container">
+                  <button type="button" id="btn-model-picker" class="model-picker-pill" title="Select Model">
+                    <span id="model-picker-current">Gemini 3.5 Flash Lite</span>
+                    <svg class="picker-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+
+                  <!-- Popover Menu -->
+                  <div id="model-popover" class="model-popover" style="display: none;">
+                    <div class="model-popover-header">Model</div>
+                    <div class="model-popover-list" id="model-popover-list">
+                      <!-- Dynamically loaded from /api/models -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="input-toolbar-right">
+                <button type="submit" class="submit-btn" id="btn-submit" title="Send message">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                    <polyline points="12 5 19 12 12 19"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </form>
         </div>
       </footer>
-    </div>
-  </div>
-
-  <!-- Database Inspector Modal (Dev Testing) -->
-  <div id="db-modal" class="db-modal" style="display: none;">
-    <div class="db-modal-inner">
-      <div class="db-modal-header">
-        <div class="db-header-info">
-          <h3>SQLite Database Inspector</h3>
-          <code>data/minimi.db</code>
-        </div>
-        <button id="btn-close-db" class="btn-modal-close">Close</button>
-      </div>
-      <div class="db-tabs">
-        <button class="db-tab-btn active" data-tab="tab-threads">Threads</button>
-        <button class="db-tab-btn" data-tab="tab-turns">Turns</button>
-        <button class="db-tab-btn" data-tab="tab-observations">Observations (EAV)</button>
-        <button class="db-tab-btn" data-tab="tab-cache">Search Cache</button>
-      </div>
-      <div class="db-content-area">
-        <div id="tab-threads" class="db-pane active"></div>
-        <div id="tab-turns" class="db-pane"></div>
-        <div id="tab-observations" class="db-pane"></div>
-        <div id="tab-cache" class="db-pane"></div>
-      </div>
     </div>
   </div>
 

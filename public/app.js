@@ -19,11 +19,16 @@ const btnNewChat = document.getElementById('btn-new-chat');
 const navThreadTitle = document.getElementById('nav-thread-title');
 const chatViewport = document.getElementById('chat-viewport');
 const recentChatsList = document.getElementById('recent-chats-list');
-const dbModal = document.getElementById('db-modal');
-const btnToggleDb = document.getElementById('btn-toggle-db');
-const btnCloseDb = document.getElementById('btn-close-db');
-const modelSelect = document.getElementById('model-select');
 const btnScrollBottom = document.getElementById('btn-scroll-bottom');
+const btnModelPicker = document.getElementById('btn-model-picker');
+const modelPickerCurrent = document.getElementById('model-picker-current');
+const modelPopover = document.getElementById('model-popover');
+const modelPopoverList = document.getElementById('model-popover-list');
+
+// Active Model State
+let currentProvider = 'google';
+let currentModel = 'gemini-3.5-flash-lite';
+let currentModelName = 'Gemini 3.5 Flash Lite';
 
 // ==========================================================================
 // Typewriter Placeholder Animation (Dynamic typing, blinking cursor, backspacing)
@@ -886,15 +891,6 @@ chatForm.addEventListener('submit', async (e) => {
   let assistantBubble = null;
   let streamRenderer = null;
 
-  // Selected Model & Provider
-  let selectedProvider = 'google';
-  let selectedModel = 'gemini-3.5-flash-lite';
-  if (modelSelect && modelSelect.value) {
-    const parts = modelSelect.value.split(':');
-    selectedProvider = parts[0] || 'google';
-    selectedModel = parts[1] || 'gemini-3.5-flash-lite';
-  }
-
   try {
     const response = await fetch('/api/chat', {
       method: 'POST',
@@ -902,8 +898,8 @@ chatForm.addEventListener('submit', async (e) => {
       body: JSON.stringify({
         message: query,
         threadId,
-        provider: selectedProvider,
-        model: selectedModel,
+        provider: currentProvider,
+        model: currentModel,
       }),
     });
 
@@ -1009,70 +1005,103 @@ function appendAssistantFooter(bubble, text) {
   bubble.appendChild(footer);
 }
 
-// Database Inspector Modal
-if (btnToggleDb && dbModal) {
-  btnToggleDb.addEventListener('click', async () => {
-    dbModal.style.display = 'flex';
-    await loadDatabaseInspector();
+// ==========================================================================
+// Dynamic Model Picker Popover (Grouped by Provider, Checks Active Keys)
+// ==========================================================================
+async function initModelPicker() {
+  try {
+    const res = await fetch('/api/models');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderModelPopover(data);
+  } catch (err) {
+    console.warn('Failed to load models list:', err);
+  }
+}
+
+function renderModelPopover(config) {
+  if (!modelPopoverList) return;
+  modelPopoverList.innerHTML = '';
+
+  const groups = [
+    { provider: 'google', title: 'Google Gemini' },
+    { provider: 'openai', title: 'OpenAI' },
+    { provider: 'anthropic', title: 'Anthropic' },
+  ];
+
+  groups.forEach((g) => {
+    const groupModels = (config.models || []).filter((m) => m.provider === g.provider);
+    if (groupModels.length === 0) return;
+
+    const groupTitle = document.createElement('div');
+    groupTitle.className = 'model-popover-group-title';
+    groupTitle.textContent = g.title;
+    modelPopoverList.appendChild(groupTitle);
+
+    groupModels.forEach((m) => {
+      const isSelected = m.id === currentModel;
+      const item = document.createElement('div');
+      item.className = 'model-popover-item' + (!m.available ? ' disabled' : '') + (isSelected ? ' selected' : '');
+
+      let badgeClass = 'unavailable';
+      if (m.available) {
+        badgeClass = m.badge.includes('Active') || m.badge.includes('Fast') ? 'active' : 'notice';
+      }
+
+      item.innerHTML = `
+        <span class="model-item-title">${escapeText(m.name)}</span>
+        <div class="model-item-meta">
+          <span class="model-badge ${badgeClass}">${escapeText(m.badge)}</span>
+          ${isSelected ? '<svg class="model-check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
+        </div>
+      `;
+
+      if (m.available) {
+        item.addEventListener('click', () => {
+          currentProvider = m.provider;
+          currentModel = m.id;
+          currentModelName = m.name;
+          if (modelPickerCurrent) modelPickerCurrent.textContent = m.name;
+          closeModelPopover();
+          renderModelPopover(config);
+        });
+      }
+
+      modelPopoverList.appendChild(item);
+    });
   });
 }
 
-if (btnCloseDb && dbModal) {
-  btnCloseDb.addEventListener('click', () => {
-    dbModal.style.display = 'none';
+function toggleModelPopover() {
+  if (!modelPopover) return;
+  const isVisible = modelPopover.style.display !== 'none';
+  if (isVisible) {
+    closeModelPopover();
+  } else {
+    modelPopover.style.display = 'block';
+    if (btnModelPicker) btnModelPicker.classList.add('open');
+  }
+}
+
+function closeModelPopover() {
+  if (modelPopover) modelPopover.style.display = 'none';
+  if (btnModelPicker) btnModelPicker.classList.remove('open');
+}
+
+if (btnModelPicker) {
+  btnModelPicker.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleModelPopover();
   });
 }
 
-document.querySelectorAll('.db-tab-btn').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.db-tab-btn').forEach((t) => t.classList.remove('active'));
-    document.querySelectorAll('.db-pane').forEach((p) => p.classList.remove('active'));
-    tab.classList.add('active');
-    const target = document.getElementById(tab.getAttribute('data-tab'));
-    if (target) target.classList.add('active');
-  });
+document.addEventListener('click', (e) => {
+  if (modelPopover && modelPopover.style.display !== 'none' && !e.target.closest('.model-picker-container')) {
+    closeModelPopover();
+  }
 });
 
-async function loadDatabaseInspector() {
-  try {
-    const res = await fetch('/api/db');
-    const data = await res.json();
-
-    renderRawDbTable('tab-threads', data.threads, ['id', 'title', 'created_at']);
-    renderRawDbTable('tab-turns', data.turns, ['id', 'thread_id', 'role', 'content', 'created_at']);
-    renderRawDbTable('tab-observations', data.observations, ['id', 'entity', 'attribute', 'value', 'currency', 'plan', 'as_of']);
-    renderRawDbTable('tab-cache', data.cacheStats, ['total_cached']);
-  } catch (e) {
-    console.error('Failed to load database inspector:', e);
-  }
-}
-
-function renderRawDbTable(containerId, rows, columns) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  if (!rows || rows.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted); padding:12px; font-size:0.8rem;">No records found in this table.</p>';
-    return;
-  }
-
-  let html = '<table class="db-raw-table"><thead><tr>';
-  columns.forEach((col) => (html += `<th>${col}</th>`));
-  html += '</tr></thead><tbody>';
-
-  rows.forEach((row) => {
-    html += '<tr>';
-    columns.forEach((col) => {
-      let val = row[col] !== undefined && row[col] !== null ? String(row[col]) : '';
-      if (val.length > 70) val = val.slice(0, 70) + '...';
-      html += `<td title="${escapeText(String(row[col] || ''))}">${escapeText(val)}</td>`;
-    });
-    html += '</tr>';
-  });
-
-  html += '</tbody></table>';
-  container.innerHTML = html;
-}
+initModelPicker();
 
 // Initial sync of existing threads from SQLite database & localStorage
 syncThreadsFromDatabase();
