@@ -101,11 +101,13 @@ export class SearchService {
   private apiKey: string;
   private db?: DatabaseClient;
   private isMock: boolean;
+  private searchProvider: 'tavily' | 'google' | 'hybrid';
 
   constructor(apiKey?: string, db?: DatabaseClient) {
     this.apiKey = apiKey || process.env.TAVILY_API_KEY || '';
     this.db = db;
     this.isMock = process.env.MOCK_SEARCH === 'true' || !this.apiKey;
+    this.searchProvider = (process.env.SEARCH_PROVIDER as any) || 'tavily';
   }
 
   async execute(params: WebSearchParams): Promise<EntitySearchResult[]> {
