@@ -1,5 +1,13 @@
 // Minimi Full-Page Frosted Glass Chat Agent
 let threadId = 'session-' + Date.now();
+let chatSessions = [];
+
+try {
+  chatSessions = JSON.parse(localStorage.getItem('minimi_chat_sessions') || '[]');
+} catch (e) {
+  chatSessions = [];
+}
+
 const messagesList = document.getElementById('messages-list');
 const welcomeCard = document.getElementById('welcome-card');
 const chatForm = document.getElementById('chat-form');
@@ -10,11 +18,108 @@ const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 const btnNewChat = document.getElementById('btn-new-chat');
 const navThreadTitle = document.getElementById('nav-thread-title');
 const chatViewport = document.getElementById('chat-viewport');
+const recentChatsList = document.getElementById('recent-chats-list');
 const dbModal = document.getElementById('db-modal');
 const btnToggleDb = document.getElementById('btn-toggle-db');
 const btnCloseDb = document.getElementById('btn-close-db');
 
-// Live macOS Clock
+// Render Recent Chats in Left Sidebar
+function renderRecentChats() {
+  if (!recentChatsList) return;
+  recentChatsList.innerHTML = '';
+
+  if (chatSessions.length === 0) {
+    const hint = document.createElement('div');
+    hint.className = 'no-chats-hint';
+    hint.style.cssText = 'padding: 6px 12px; font-size: 0.74rem; color: var(--text-muted);';
+    hint.textContent = 'No recent chats yet';
+    recentChatsList.appendChild(hint);
+    return;
+  }
+
+  chatSessions.slice(0, 15).forEach((session) => {
+    const btn = document.createElement('button');
+    btn.className = 'history-item' + (session.id === threadId ? ' active' : '');
+    btn.setAttribute('data-thread-id', session.id);
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'history-title';
+    titleSpan.textContent = session.title;
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'history-date';
+    dateSpan.textContent = new Date(session.timestamp).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+
+    btn.appendChild(titleSpan);
+    btn.appendChild(dateSpan);
+
+    btn.addEventListener('click', async () => {
+      switchThread(session.id, session.title);
+    });
+
+    recentChatsList.appendChild(btn);
+  });
+}
+
+function saveChatSession(id, title) {
+  const existingIdx = chatSessions.findIndex((s) => s.id === id);
+  if (existingIdx >= 0) {
+    chatSessions[existingIdx].timestamp = Date.now();
+  } else {
+    chatSessions.unshift({
+      id,
+      title: title.length > 28 ? title.slice(0, 28) + '...' : title,
+      timestamp: Date.now(),
+    });
+  }
+  try {
+    localStorage.setItem('minimi_chat_sessions', JSON.stringify(chatSessions));
+  } catch (e) {}
+  renderRecentChats();
+}
+
+async function switchThread(id, title) {
+  threadId = id;
+  if (navThreadTitle) navThreadTitle.textContent = title;
+  if (welcomeCard) welcomeCard.style.display = 'none';
+  messagesList.innerHTML = '';
+
+  // Update active state in sidebar
+  document.querySelectorAll('.history-item').forEach((item) => {
+    if (item.getAttribute('data-thread-id') === id) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
+  // Fetch thread history from backend
+  try {
+    const res = await fetch(`/api/threads/${id}/turns`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.turns && data.turns.length > 0) {
+        data.turns.forEach((turn) => {
+          const wrapper = document.createElement('div');
+          wrapper.className = `msg-wrapper ${turn.role}`;
+          const bubble = document.createElement('div');
+          bubble.className = 'chat-bubble';
+          bubble.innerHTML = renderMarkdown(turn.content);
+          wrapper.appendChild(bubble);
+          messagesList.appendChild(wrapper);
+        });
+        chatViewport.scrollTop = chatViewport.scrollHeight;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load thread turns:', e);
+  }
+}
+
+// Live Clock
 function updateClock() {
   const now = new Date();
   if (clockDisplay) {
@@ -27,7 +132,62 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Textarea Auto-Resize & Keyboard Handling (No arrows, no resize handles)
+// Dynamic Typing Placeholder with Blinking Cursor & Backspacing
+const PLACEHOLDER_TEXTS = [
+  'Ask a question or check if past information changed...',
+  'Has Supabase pricing changed since last Tuesday?',
+  'On Monday we shortlisted 5 CRM tools for sales...',
+  'What did I ask you on 3 November?',
+  'Get me top hosting platforms and their pricings...',
+];
+
+let textIdx = 0;
+let charIdx = 0;
+let isDeleting = false;
+let typingActive = true;
+
+function typePlaceholderLoop() {
+  if (!typingActive || document.activeElement === userInput) {
+    return;
+  }
+  const currentText = PLACEHOLDER_TEXTS[textIdx];
+  if (isDeleting) {
+    userInput.placeholder = currentText.substring(0, charIdx - 1) + ' |';
+    charIdx--;
+    if (charIdx <= 0) {
+      isDeleting = false;
+      textIdx = (textIdx + 1) % PLACEHOLDER_TEXTS.length;
+      setTimeout(typePlaceholderLoop, 400);
+      return;
+    }
+    setTimeout(typePlaceholderLoop, 30);
+  } else {
+    userInput.placeholder = currentText.substring(0, charIdx + 1) + ' |';
+    charIdx++;
+    if (charIdx >= currentText.length) {
+      isDeleting = true;
+      setTimeout(typePlaceholderLoop, 2400);
+      return;
+    }
+    setTimeout(typePlaceholderLoop, 55);
+  }
+}
+
+userInput.addEventListener('focus', () => {
+  typingActive = false;
+  userInput.placeholder = 'Ask a question or check if past information changed...';
+});
+
+userInput.addEventListener('blur', () => {
+  if (!userInput.value.trim()) {
+    typingActive = true;
+    setTimeout(typePlaceholderLoop, 500);
+  }
+});
+
+setTimeout(typePlaceholderLoop, 800);
+
+// Textarea Auto-Resize
 userInput.addEventListener('input', () => {
   userInput.style.height = 'auto';
   userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
@@ -40,7 +200,7 @@ userInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Collapsible Left Navigation Sidebar (ChatGPT / Claude style)
+// Sidebar Toggle
 if (btnToggleSidebar && appSidebar) {
   btnToggleSidebar.addEventListener('click', () => {
     appSidebar.classList.toggle('collapsed');
@@ -64,7 +224,7 @@ function startNewSession(title) {
   document.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
 }
 
-// 4 Canonical Evaluation Scenarios
+// Evaluation Presets
 const PRESETS = {
   crm: {
     title: 'Monday CRM Shortlist',
@@ -136,7 +296,6 @@ const PRESETS = {
   },
 };
 
-// Handle Scenario Activation
 async function activateScenario(key) {
   const p = PRESETS[key];
   if (!p) return;
@@ -144,7 +303,6 @@ async function activateScenario(key) {
   threadId = p.threadId;
   if (navThreadTitle) navThreadTitle.textContent = p.title;
 
-  // Highlight active sidebar item
   document.querySelectorAll('.history-item').forEach((item) => {
     if (item.getAttribute('data-preset') === key) {
       item.classList.add('active');
@@ -153,7 +311,6 @@ async function activateScenario(key) {
     }
   });
 
-  // Seed baseline turns into SQLite
   if (p.turns.length > 0) {
     try {
       await fetch('/api/import', {
@@ -165,9 +322,7 @@ async function activateScenario(key) {
           turns: p.turns,
         }),
       });
-    } catch (e) {
-      console.warn('Scenario seeding warning:', e);
-    }
+    } catch (e) {}
   }
 
   userInput.value = p.query;
@@ -176,15 +331,13 @@ async function activateScenario(key) {
   userInput.focus();
 }
 
-// Sidebar Scenario Item Click
-document.querySelectorAll('.history-item').forEach((btn) => {
+document.querySelectorAll('[data-preset]').forEach((btn) => {
   btn.addEventListener('click', () => {
     const key = btn.getAttribute('data-preset');
     activateScenario(key);
   });
 });
 
-// Welcome Quick-Cards Click
 document.querySelectorAll('.quick-card').forEach((card) => {
   card.addEventListener('click', () => {
     const q = card.getAttribute('data-query');
@@ -200,7 +353,7 @@ document.querySelectorAll('.quick-card').forEach((card) => {
   });
 });
 
-// Robust Markdown & HTML Table Parser
+// Markdown & Table Parser (Normal Bold & Italic Typography, No Badges)
 function renderMarkdown(text) {
   if (!text) return '';
 
@@ -212,14 +365,17 @@ function renderMarkdown(text) {
 
   function formatInline(cell) {
     let c = cell.trim();
-    // Bolding
+    // Bold
     c = c.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    c = c.replace(/\*(.*?)\*/g, '<em>$1</em>');
     // Inline code
     c = c.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    // Status tags
-    c = c.replace(/\[Changed\]/g, '<span class="status-tag changed">[Changed]</span>');
-    c = c.replace(/\[No change found\]/g, '<span class="status-tag no-change">[No change found]</span>');
-    c = c.replace(/\[Unverified\]/g, '<span class="status-tag unverified">[Unverified]</span>');
+    // Status text formatting (clean typography without badge shapes)
+    c = c.replace(/`?\[?No change found\]?`?/gi, '<strong>No change found</strong>');
+    c = c.replace(/`?\[?Changed\]?`?/gi, '<strong>Changed</strong>');
+    c = c.replace(/`?\[?Unverified\]?`?/gi, '<em>Unverified</em>');
+    c = c.replace(/`?\[?Not comparable\]?`?/gi, '<em>Not comparable</em>');
     // Markdown links
     c = c.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     return c;
@@ -247,17 +403,14 @@ function renderMarkdown(text) {
     const rawLine = lines[i];
     const trimmed = rawLine.trim();
 
-    // Markdown Table Detection
     if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
       const cells = trimmed
         .slice(1, -1)
         .split('|')
         .map((s) => s.trim());
-      // Check if separator line (| :--- | :--- |)
       const isSep = cells.every((c) => /^:?-+:?$/.test(c));
-      if (isSep) {
-        continue;
-      }
+      if (isSep) continue;
+
       if (!inTable) {
         inTable = true;
         tableHeader = cells;
@@ -265,9 +418,7 @@ function renderMarkdown(text) {
         tableRows.push(cells);
       }
     } else {
-      if (inTable) {
-        flushTable();
-      }
+      if (inTable) flushTable();
 
       if (trimmed.startsWith('### ')) {
         result.push(`<h3 class="md-h3">${formatInline(trimmed.slice(4))}</h3>`);
@@ -287,26 +438,25 @@ function renderMarkdown(text) {
   }
 
   if (inTable) flushTable();
-
   return result.join('');
 }
 
-// Collapsible Reasoning Accordion Builder (Gemini / Antigravity style)
-function createReasoningAccordion(steps) {
-  const block = document.createElement('div');
-  block.className = 'reasoning-block';
+// Antigravity-Style Dynamic Reasoning Widget
+function createDynamicReasoningWidget(steps) {
+  const container = document.createElement('div');
+  container.className = 'reasoning-block open';
 
   const header = document.createElement('div');
   header.className = 'reasoning-header';
   header.innerHTML = `
     <div class="reasoning-title-group">
-      <svg class="reasoning-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="reasoning-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <polyline points="9 18 15 12 9 6"></polyline>
       </svg>
       <span>Reasoning Steps</span>
       <span class="reasoning-step-count">${steps.length} steps</span>
     </div>
-    <span style="font-size:0.72rem; color:var(--text-muted);">Expand</span>
+    <span class="reasoning-toggle-hint" style="font-size:0.72rem; color:var(--text-muted);">Collapse</span>
   `;
 
   const body = document.createElement('div');
@@ -318,7 +468,7 @@ function createReasoningAccordion(steps) {
       <span class="step-num">${idx + 1}.</span>
       <div class="step-text">
         <strong style="color:var(--text-main); font-weight:600;">${escapeText(s.title)}:</strong>
-        <span>${escapeText(s.detail)}</span>
+        <span style="color:var(--text-sub);">${escapeText(s.detail)}</span>
       </div>
     </div>
   `
@@ -326,16 +476,16 @@ function createReasoningAccordion(steps) {
     .join('');
 
   header.addEventListener('click', () => {
-    block.classList.toggle('open');
-    const hint = header.querySelector('span:last-child');
+    container.classList.toggle('open');
+    const hint = header.querySelector('.reasoning-toggle-hint');
     if (hint) {
-      hint.textContent = block.classList.contains('open') ? 'Collapse' : 'Expand';
+      hint.textContent = container.classList.contains('open') ? 'Collapse' : 'Expand';
     }
   });
 
-  block.appendChild(header);
-  block.appendChild(body);
-  return block;
+  container.appendChild(header);
+  container.appendChild(body);
+  return container;
 }
 
 function escapeText(str) {
@@ -347,7 +497,7 @@ function escapeText(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Chat Form Submission & SSE Streaming
+// Chat Form Submission
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = userInput.value.trim();
@@ -357,25 +507,25 @@ chatForm.addEventListener('submit', async (e) => {
   userInput.value = '';
   userInput.style.height = 'auto';
 
-  // 1. Render User Message
+  // 1. Add chat session to left sidebar
+  saveChatSession(threadId, query);
+
+  // 2. Render user bubble
   const userWrapper = document.createElement('div');
   userWrapper.className = 'msg-wrapper user';
   userWrapper.innerHTML = `<div class="chat-bubble">${escapeText(query)}</div>`;
   messagesList.appendChild(userWrapper);
 
-  // 2. Prepare Assistant Message Container
+  // 3. Prepare assistant wrapper (NO empty chat bubble box created yet!)
   const assistantWrapper = document.createElement('div');
   assistantWrapper.className = 'msg-wrapper assistant';
-
-  const assistantBubble = document.createElement('div');
-  assistantBubble.className = 'chat-bubble';
-  assistantBubble.innerHTML = '';
-  assistantWrapper.appendChild(assistantBubble);
   messagesList.appendChild(assistantWrapper);
 
   chatViewport.scrollTop = chatViewport.scrollHeight;
 
-  let reasoningBlockAppended = false;
+  let reasoningBlock = null;
+  let assistantBubble = null;
+  let accumulatedText = '';
 
   try {
     const response = await fetch('/api/chat', {
@@ -394,7 +544,6 @@ chatForm.addEventListener('submit', async (e) => {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let accumulatedText = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -408,23 +557,29 @@ chatForm.addEventListener('submit', async (e) => {
           try {
             const data = JSON.parse(line.slice(6));
 
-            // Token delta
-            if (data.delta) {
+            // Dynamic reasoning steps event
+            if (data.steps && !reasoningBlock) {
+              reasoningBlock = createDynamicReasoningWidget(data.steps);
+              assistantWrapper.appendChild(reasoningBlock);
+            }
+            // Token generation event
+            else if (data.delta) {
               accumulatedText += data.delta;
+              // Only create the response text container when text actually appears!
+              if (!assistantBubble) {
+                assistantBubble = document.createElement('div');
+                assistantBubble.className = 'chat-bubble';
+                assistantWrapper.appendChild(assistantBubble);
+              }
               assistantBubble.innerHTML = renderMarkdown(accumulatedText);
             }
-            // Collapsible reasoning steps event
-            else if (data.steps && !reasoningBlockAppended) {
-              const accordion = createReasoningAccordion(data.steps);
-              assistantWrapper.insertBefore(accordion, assistantBubble);
-              reasoningBlockAppended = true;
-            }
-            // Tool call status update
-            else if (data.status) {
-              // Subtle search status if needed
-            }
-            // Error
+            // Error event
             else if (data.error) {
+              if (!assistantBubble) {
+                assistantBubble = document.createElement('div');
+                assistantBubble.className = 'chat-bubble';
+                assistantWrapper.appendChild(assistantBubble);
+              }
               assistantBubble.innerHTML = `<span style="color:#ef4444;">${escapeText(data.error)}</span>`;
             }
           } catch {}
@@ -433,11 +588,16 @@ chatForm.addEventListener('submit', async (e) => {
       chatViewport.scrollTop = chatViewport.scrollHeight;
     }
   } catch (err) {
+    if (!assistantBubble) {
+      assistantBubble = document.createElement('div');
+      assistantBubble.className = 'chat-bubble';
+      assistantWrapper.appendChild(assistantBubble);
+    }
     assistantBubble.innerHTML = `<span style="color:#ef4444;">${escapeText(err.message)}</span>`;
   }
 });
 
-// Database Inspector Modal (Dev Testing)
+// Database Inspector Modal
 if (btnToggleDb && dbModal) {
   btnToggleDb.addEventListener('click', async () => {
     dbModal.style.display = 'flex';
@@ -501,3 +661,6 @@ function renderRawDbTable(containerId, rows, columns) {
   html += '</tbody></table>';
   container.innerHTML = html;
 }
+
+// Initial render of existing sessions
+renderRecentChats();

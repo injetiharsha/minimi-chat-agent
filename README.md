@@ -99,7 +99,7 @@ flowchart TD
     end
     
     Tavily --> PostVerify["Post-Model Verbatim Number Verification"]
-    PostVerify --> OutputTable["FactLens Delta Table: [Changed], [No change found], [Unverified]"]
+    PostVerify --> OutputTable["Verification Delta Table: Changed, No change found, Unverified"]
     OutputTable --> Persist["Persist New Turns to SQLite (data/minimi.db)"]
 ```
 
@@ -136,7 +136,7 @@ minimi-chat-agent/
 │   ├── agent/
 │   │   ├── agent.ts           # Vercel AI SDK integration & single-tool executor
 │   │   ├── context.ts         # chrono-node date parsing & deterministic assembly
-│   │   └── prompt.ts          # System prompt & FactLens output formatting rules
+│   │   └── prompt.ts          # System prompt & verification output formatting rules
 │   ├── db/
 │   │   ├── client.ts          # sql.js WASM SQLite client & EAV observations
 │   │   └── schema.sql         # Universal SQLite schema (threads, turns, observations)

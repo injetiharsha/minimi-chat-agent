@@ -27,9 +27,14 @@
         </button>
       </div>
 
-      <div class="sidebar-section-label">Evaluation Scenarios</div>
-      <div class="sidebar-history-list">
-        <button class="history-item active" data-preset="crm">
+      <div class="sidebar-section-label">Recent Chats</div>
+      <div class="sidebar-history-list" id="recent-chats-list">
+        <div class="no-chats-hint" id="no-chats-hint" style="padding: 6px 12px; font-size: 0.74rem; color: var(--text-muted);">No recent chats yet</div>
+      </div>
+
+      <div class="sidebar-section-label" style="margin-top: 10px;">Evaluation Scenarios</div>
+      <div class="sidebar-history-list" id="scenarios-list">
+        <button class="history-item" data-preset="crm">
           <span class="history-title">Monday CRM Shortlist</span>
           <span class="history-date">Nov 9, 2026</span>
         </button>

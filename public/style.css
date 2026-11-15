@@ -528,31 +528,30 @@ html, body {
 }
 
 .status-tag {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
+  display: inline;
+  font-family: inherit;
+  font-size: 0.86rem;
   font-weight: 600;
-  white-space: nowrap;
+  color: var(--text-main);
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
 }
 
 .status-tag.changed {
-  background: var(--status-amber-bg);
-  color: var(--status-amber-text);
-  border: 1px solid #fde68a;
+  font-weight: 600;
+  color: var(--text-main);
 }
 
 .status-tag.no-change {
-  background: var(--status-emerald-bg);
-  color: var(--status-emerald-text);
-  border: 1px solid #a7f3d0;
+  font-weight: 600;
+  color: var(--text-main);
 }
 
 .status-tag.unverified {
-  background: var(--status-purple-bg);
-  color: var(--status-purple-text);
-  border: 1px solid #e9d5ff;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .chat-bubble a {

@@ -123,9 +123,9 @@ function buildReasoningTimeline(context: any, message: string): Array<{ title: s
     detail: 'Invoked single web_search tool across target entities to fetch real-time state and official changelogs.',
   });
 
-  // Step 4: FactLens Delta Synthesis
+  // Step 4: Verification Delta Synthesis
   steps.push({
-    title: 'FactLens Comparative Synthesis',
+    title: 'Verification Synthesis',
     detail: 'Synthesized grounded comparison between historical baseline facts and live search evidence.',
   });
 
@@ -232,6 +232,7 @@ app.post('/api/chat', async (c) => {
             event: 'token',
             data: JSON.stringify({ delta: w + ' ' }),
           });
+          await new Promise((res) => setTimeout(res, 20));
         }
 
         const assistantTurnId = crypto.randomUUID();

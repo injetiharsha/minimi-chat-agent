@@ -37,9 +37,9 @@ export function resolveContext(
   let referenceDateIso: string | undefined;
   let matchedTurns: Turn[] = [];
 
-  // Check temporal diff keywords
+  // Check temporal diff keywords (must express change/validity check relative to past)
   const isDiffQuery =
-    /changed|change|still correct|still true|since|updates|updated|shipped|pricing/i.test(
+    /changed|change|still correct|still true|since|updates|updated|shipped/i.test(
       userMessage
     );
 
@@ -81,15 +81,18 @@ export function resolveContext(
       // Pure date recall without topic keywords (e.g. "What did I ask you on 3 November?")
       matchedTurns = db.findTurnsInWindow(startWindow, endWindow);
     }
-  } else if (isDiffQuery) {
-    // No explicit date, but asks about diff (e.g. "Has pricing changed since our last chat?")
+  } else if (isDiffQuery && /our last|previous|earlier|before|shortlisted|we discussed|last chat/i.test(userMessage)) {
+    // Diff query referencing previous chat without explicit calendar date
+    const stopWords = /\b(on|last|what|did|i|ask|asked|you|your|has|any|of|them|changed|pricing|since|then|today|still|correct|answer|we|discussed|about|was|my|question|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|tools|tool|team|shortlist|shortlisted|recommend|recommendation|options|best|top|five|for|our|a|the|in|is|it)\b/gi;
     const cleanTokens = userMessage
-      .replace(/has|any|of|them|changed|pricing|since|our|last|chat|discussion/gi, '')
+      .replace(stopWords, '')
       .split(/\s+/)
-      .map((t) => t.trim())
+      .map((t) => t.trim().replace(/[^a-zA-Z0-9]/g, ''))
       .filter((t) => t.length > 2);
 
-    matchedTurns = db.findTurnsInWindow('1970-01-01', nowIso, cleanTokens.length > 0 ? cleanTokens : undefined);
+    if (cleanTokens.length > 0) {
+      matchedTurns = db.findTurnsInWindow('1970-01-01', nowIso, cleanTokens);
+    }
   }
 
   // Determine intent & instant preamble
@@ -105,7 +108,7 @@ export function resolveContext(
       year: 'numeric',
     });
     preamble = `Found your prior conversation from ${matchDate}. Verifying current real-world updates...`;
-  } else if (/search|who|what|when|where|which|compare|price|pricing|latest|news|weather/i.test(userMessage)) {
+  } else if (/search|who|what|when|where|which|compare|price|pricing|latest|news|weather|top|hosting|list|recommend|find/i.test(userMessage)) {
     intent = 'FRESH_SEARCH';
     preamble = 'Searching the web for current information...';
   }

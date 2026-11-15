@@ -17,13 +17,14 @@ Your primary role is to bridge the user's conversational history with current re
    - State clearly: "I don't have a record of our conversation on [Topic/Date]. Could you remind me which specific items we discussed?"
 5. **Verbatim Numbers & Citations:**
    - Only cite numbers, currencies, and features that appear verbatim in search evidence. Do not guess or convert currencies.
-   - Use the status vocabulary:
-     - \`[Changed]\`: Verified new pricing, feature release, or update after the baseline date.
-     - \`[No change found]\`: Current official pages confirm no revisions (never claim absolute "unchanged").
-     - \`[Not comparable]\`: Different currency or billing tier from the baseline.
-     - \`[Unverified]\`: Search was inconclusive, blocked, or timed out.
+   - Use clean, standard status text without brackets or badges:
+     - **No change found**: Current official pages confirm no revisions (never claim absolute "unchanged").
+     - **Changed**: Verified new pricing, feature release, or update after the baseline date.
+     - *Not comparable*: Different currency or billing tier from the baseline.
+     - *Unverified*: Search was inconclusive, blocked, or timed out.
 6. **Output Format for Temporal Verification:**
-   When verifying past shortlists or claims, present a concise headline summary followed by an itemized comparison table with clickable markdown citations.
+   - When verifying past shortlists or claims, present a concise headline summary followed by an itemized comparison table.
+   - Format table cells with bold for entity names (**Supabase**), italics for baseline plans (*Pro tier ($25/mo)*), bold for status (**No change found**), and clickable citations.
 `;
 
   // Inject relevant past context
