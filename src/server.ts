@@ -122,72 +122,102 @@ app.post('/api/chat', async (c) => {
     });
 
     try {
-      const { streamResult, activeModel } = agentService.stream(message, threadId, {
-        nowOverride,
-        timezone,
-        provider,
-        model,
-        userTurnId,
-      });
+      const targetProvider = provider || process.env.LLM_PROVIDER || 'google';
+      const primaryModel =
+        model ||
+        process.env.LLM_MODEL ||
+        (targetProvider === 'google' ? 'gemini-3.5-flash-lite' : targetProvider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-20241022');
+
+      const { GEMINI_CASCADE_MODELS } = await import('./agent/agent.js');
+      const candidateModels =
+        targetProvider === 'google'
+          ? Array.from(new Set([primaryModel, ...GEMINI_CASCADE_MODELS]))
+          : [primaryModel];
 
       let fullResponseText = '';
+      let successfulModel = '';
 
-      // Stream tokens and live tool events
-      for await (const part of streamResult.fullStream) {
-        if (part.type === 'text-delta') {
-          if (!firstTokenReceived) {
-            firstTokenReceived = true;
-            const totalSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
-            await stream.writeSSE({
-              event: 'telemetry',
-              data: JSON.stringify({
-                id: 'thinking',
-                status: 'done',
-                title: `Thought for ${totalSec}s`,
-              }),
-            });
+      for (const candidate of candidateModels) {
+        try {
+          console.log(`[Stream] Attempting model: ${candidate} (${targetProvider})`);
+          const { streamResult } = agentService.stream(message, threadId, {
+            nowOverride,
+            timezone,
+            provider: targetProvider,
+            model: candidate,
+            userTurnId,
+          });
+
+          // Stream tokens and live tool events
+          for await (const part of streamResult.fullStream) {
+            if (part.type === 'text-delta') {
+              if (!firstTokenReceived) {
+                firstTokenReceived = true;
+                const totalSec = Math.max(1, Math.round((Date.now() - startTime) / 1000));
+                await stream.writeSSE({
+                  event: 'telemetry',
+                  data: JSON.stringify({
+                    id: 'thinking',
+                    status: 'done',
+                    title: `Thought for ${totalSec}s`,
+                  }),
+                });
+              }
+
+              fullResponseText += part.textDelta;
+              await stream.writeSSE({
+                event: 'token',
+                data: JSON.stringify({ delta: part.textDelta }),
+              });
+            } else if (part.type === 'tool-call') {
+              const calledEntities = (part as any).args?.items?.map((i: any) => i.entity).filter(Boolean) || [];
+              const label = calledEntities.length > 0 ? calledEntities.join(', ') : 'live web sources';
+              await stream.writeSSE({
+                event: 'telemetry',
+                data: JSON.stringify({
+                  id: 'tool-' + Date.now(),
+                  status: 'running',
+                  title: `Ran web_search for ${label}`,
+                }),
+              });
+              await stream.writeSSE({
+                event: 'status',
+                data: JSON.stringify({
+                  status: `Searching live web for ${label}...`,
+                }),
+              });
+            } else if (part.type === 'tool-result') {
+              await stream.writeSSE({
+                event: 'telemetry',
+                data: JSON.stringify({
+                  id: 'tool-done-' + Date.now(),
+                  status: 'done',
+                  title: `Search complete`,
+                }),
+              });
+            } else if (part.type === 'error') {
+              console.warn(`[Stream] Error part in ${candidate}:`, (part as any).error);
+              throw new Error((part as any).error?.message || 'Model stream error');
+            }
           }
 
-          fullResponseText += part.textDelta;
-          await stream.writeSSE({
-            event: 'token',
-            data: JSON.stringify({ delta: part.textDelta }),
-          });
-        } else if (part.type === 'tool-call') {
-          const calledEntities = (part as any).args?.items?.map((i: any) => i.entity).filter(Boolean) || [];
-          const label = calledEntities.length > 0 ? calledEntities.join(', ') : 'live web sources';
-          await stream.writeSSE({
-            event: 'telemetry',
-            data: JSON.stringify({
-              id: 'tool-' + Date.now(),
-              status: 'running',
-              title: `Ran web_search for ${label}`,
-            }),
-          });
-          await stream.writeSSE({
-            event: 'status',
-            data: JSON.stringify({
-              status: `Searching live web for ${label}...`,
-            }),
-          });
-        } else if (part.type === 'tool-result') {
-          await stream.writeSSE({
-            event: 'telemetry',
-            data: JSON.stringify({
-              id: 'tool-done-' + Date.now(),
-              status: 'done',
-              title: `Search complete`,
-            }),
-          });
-        } else if (part.type === 'error') {
-          console.warn('fullStream error part encountered:', (part as any).error);
-          throw new Error((part as any).error?.message || 'Model stream error');
+          if (fullResponseText.trim()) {
+            successfulModel = candidate;
+            break; // Successfully streamed entire response
+          }
+        } catch (candidateErr: any) {
+          console.warn(`[Stream] Model ${candidate} failed:`, candidateErr.message);
+          // If tokens already started flowing to the user, we cannot restart
+          if (firstTokenReceived) {
+            break;
+          }
+          // Otherwise, continue cascade to next available model
         }
       }
 
       if (!fullResponseText.trim()) {
-        console.warn('Model response was empty, invoking grounded fallback synthesis...');
-        throw new Error('Empty model stream');
+        console.warn('All candidate models exhausted or empty, falling back to grounded synthesis...');
+        throw new Error('All candidate models exhausted');
       }
 
       // Persist assistant turn to SQLite
@@ -202,7 +232,7 @@ app.post('/api/chat', async (c) => {
 
       await stream.writeSSE({
         event: 'done',
-        data: JSON.stringify({ success: true, model: activeModel }),
+        data: JSON.stringify({ success: true, model: successfulModel }),
       });
     } catch (err: any) {
       console.warn('Streaming error, falling back to grounded synthesis:', err.message);

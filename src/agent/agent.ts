@@ -11,10 +11,11 @@ import type { DatabaseClient } from '../db/client.js';
 dns.setDefaultResultOrder('ipv4first');
 
 export const GEMINI_CASCADE_MODELS = [
-  'gemini-3.8-flash',
   'gemini-3.5-flash-lite',
   'gemini-flash-lite-latest',
   'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3.8-flash',
 ];
 
 export class AgentService {
@@ -295,7 +296,7 @@ export class AgentService {
     const primaryModel =
       options.model ||
       process.env.LLM_MODEL ||
-      (targetProvider === 'google' ? 'gemini-3.8-flash' : targetProvider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-20241022');
+      (targetProvider === 'google' ? 'gemini-3.5-flash-lite' : targetProvider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-20241022');
 
     const candidateModels =
       targetProvider === 'google'
