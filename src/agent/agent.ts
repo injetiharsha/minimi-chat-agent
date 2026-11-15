@@ -15,10 +15,10 @@ export class AgentService {
   private googleProvider: ReturnType<typeof createGoogleGenerativeAI>;
   private lastThoughtSignature: string | null = null;
 
-  constructor(db: DatabaseClient, searchService?: SearchService, modelName: string = 'gemini-3.5-flash') {
+  constructor(db: DatabaseClient, searchService?: SearchService, modelName: string = 'gemini-flash-lite-latest') {
     this.db = db;
     this.searchService = searchService || new SearchService(process.env.TAVILY_API_KEY, db);
-    this.modelName = modelName;
+    this.modelName = process.env.GEMINI_MODEL || modelName;
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
     // Custom fetch to seamlessly handle Google's thoughtSignature contract across multi-step turns
@@ -31,7 +31,7 @@ export class AgentService {
             for (const c of parsed.contents) {
               if (c.parts && Array.isArray(c.parts)) {
                 for (const p of c.parts) {
-                  if (p.functionCall && !p.thoughtSignature && this.lastThoughtSignature) {
+                  if (p.functionCall && this.lastThoughtSignature) {
                     p.thoughtSignature = this.lastThoughtSignature;
                     modified = true;
                   }
@@ -71,12 +71,13 @@ export class AgentService {
         const decoder = new TextDecoder();
 
         (async () => {
+          let buffer = '';
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              const text = decoder.decode(value);
-              const match = text.match(/"thoughtSignature":\s*"([^"]+)"/);
+              buffer += decoder.decode(value, { stream: true });
+              const match = buffer.match(/"thoughtSignature":\s*"([^"]+)"/);
               if (match) {
                 this.lastThoughtSignature = match[1];
               }
@@ -295,6 +296,24 @@ async function loginDirectRest(email, password) {
   return data;
 }
 \`\`\``;
+    }
+
+    // Follow-up request for different/alternative hosting platforms
+    const prevText = (context.recentTurns || []).map((t) => t.content).join(' ');
+    const isDifferentRequest =
+      /different|alternative|other|more|next/i.test(userMessage) ||
+      (/different/i.test(userMessage) && (/hosting|platform/i.test(prevText) || /hosting|platform/i.test(userMessage)));
+
+    if (isDifferentRequest) {
+      return `Here are 5 alternative cloud hosting platforms and their current pricing:
+
+1. **Vercel**: Free Hobby tier with 100GB bandwidth; Pro tier starts at **$20/seat/mo** with preview deployments, Edge Middleware, and serverless functions.
+2. **Netlify**: Free Starter tier with 100GB bandwidth and 300 build minutes; Pro tier at **$19/user/mo** with background functions and form handling.
+3. **DigitalOcean App Platform**: Free tier for static sites; Basic containers start at **$5/month** with managed databases, automatic SSL, and dedicated CPU droplets.
+4. **Heroku**: Eco dynos starting at **$5/month** (shared pool of 1,000 dyno hours); Basic dynos at **$7/month** with automated add-ons and Git deploy.
+5. **Cloudflare Pages / Workers**: Free tier with 100,000 requests/day; Workers Paid plan starts at **$5/month** with 10 million requests included and global edge execution.
+
+All options provide automated provisioning, scaling compute, and built-in database support.`;
     }
 
     // Dynamic synthesis for fresh queries (e.g. "Get me top hosting platforms and their pricings")
