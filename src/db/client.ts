@@ -138,7 +138,7 @@ export class DatabaseClient {
   saveObservation(obs: Observation): void {
     if (!this.db) throw new Error('Database not initialized');
     this.db.run(
-      `INSERT INTO observations (
+      `INSERT OR REPLACE INTO observations (
         id, turn_id, entity, attribute, value, currency, period, unit, plan, as_of, source_url, supersedes_id, volatility_tag
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [

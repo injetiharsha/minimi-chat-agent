@@ -47,20 +47,28 @@ export function resolveContext(
     const targetDate = parsedDates[0].start.date();
     referenceDateIso = targetDate.toISOString();
 
-    // Create a 3-day search window around target date
-    const startWindow = new Date(targetDate.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    const endWindow = new Date(targetDate.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    // Create a search window around target date (start of day to end of day)
+    const startWindow = new Date(targetDate.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const endWindow = new Date(targetDate.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
-    // Extract potential topic keywords from prompt
+    // First attempt: retrieve all turns within that exact date window
+    matchedTurns = db.findTurnsInWindow(startWindow, endWindow);
+
+    // If multiple topics occurred on that date, narrow down by explicit topic keywords
     const cleanTokens = userMessage
-      .replace(/on|last|what|did|i|ask|you|has|any|of|them|changed|pricing|since|then|today/gi, '')
+      .replace(/on|last|what|did|i|ask|you|has|any|of|them|changed|pricing|since|then|today|still|correct|answer|we|discussed|about|was|my|question/gi, '')
       .split(/\s+/)
-      .map((t) => t.trim())
+      .map((t) => t.trim().replace(/[^a-zA-Z0-9]/g, ''))
       .filter((t) => t.length > 2);
 
-    matchedTurns = db.findTurnsInWindow(startWindow, endWindow, cleanTokens.length > 0 ? cleanTokens : undefined);
+    if (matchedTurns.length > 2 && cleanTokens.length > 0) {
+      const topicFiltered = db.findTurnsInWindow(startWindow, endWindow, cleanTokens);
+      if (topicFiltered.length > 0) {
+        matchedTurns = topicFiltered;
+      }
+    }
 
-    // If no turn in window, fallback to wider keyword match
+    // If no turn in that window, fallback to wider keyword match across all time
     if (matchedTurns.length === 0 && cleanTokens.length > 0) {
       matchedTurns = db.findTurnsInWindow('1970-01-01', nowIso, cleanTokens);
     }

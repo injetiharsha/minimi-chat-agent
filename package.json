@@ -8,7 +8,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "eval": "tsx src/eval.ts",
-    "eval:search": "tsx src/evalSearch.ts"
+    "eval:search": "tsx src/evalSearch.ts",
+    "import": "tsx src/import_dataset.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.1.18",
