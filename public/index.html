@@ -3,158 +3,109 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Minimi — Mac Temporal Intelligence Widget</title>
+  <title>Minimi — Mac Temporal Intelligence</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
-<body class="mac-desktop-bg">
-  <div class="mac-spotlight-overlay"></div>
-
-  <!-- Main macOS Floating Widget / Palette Window -->
-  <div class="mac-window" id="mac-window">
-    <!-- macOS Window Chrome / Titlebar -->
+<body class="mac-light-bg">
+  <div class="mac-window">
+    <!-- Window Titlebar -->
     <header class="mac-titlebar">
-      <div class="mac-traffic-lights">
-        <span class="light close" title="Close"></span>
-        <span class="light minimize" title="Minimize"></span>
-        <span class="light zoom" title="Zoom"></span>
+      <div class="window-controls">
+        <span class="control close"></span>
+        <span class="control minimize"></span>
+        <span class="control zoom"></span>
       </div>
 
-      <div class="mac-titlebar-center">
-        <div class="segmented-control">
-          <button class="segment active" data-view="view-chat">Intelligence</button>
-          <button class="segment" data-view="view-diff">FactLens Diffs</button>
-          <button class="segment" data-view="view-db">SQLite State</button>
-        </div>
+      <div class="window-title-container">
+        <span class="window-app-name">Minimi</span>
+        <span class="window-divider">/</span>
+        <span class="window-mode-label">Temporal Agent</span>
       </div>
 
-      <div class="mac-titlebar-right">
-        <div class="status-clock" id="clock-display">
-          <span class="clock-icon">􀐫</span>
-          <span class="clock-time">12:40 PM</span>
-        </div>
-        <button id="btn-reset" class="mac-icon-btn" title="Reset Session">􀅈</button>
+      <div class="window-actions">
+        <span class="clock-display" id="clock-display">--:--</span>
+        <button id="btn-toggle-db" class="btn-subtle">Database</button>
+        <button id="btn-reset" class="btn-subtle">New Session</button>
       </div>
     </header>
 
-    <!-- Quick Preset Launcher Bar (Hiring Grader Presets) -->
-    <section class="preset-strip">
-      <span class="preset-label">SCENARIOS</span>
-      <button class="preset-pill" id="btn-seed-crm" data-preset="crm">
-        <span class="pill-dot emerald"></span>
-        <span>Monday CRM Shortlist</span>
-      </button>
-      <button class="preset-pill" id="btn-seed-postgres" data-preset="postgres">
-        <span class="pill-dot sky"></span>
-        <span>Last Tuesday Postgres</span>
-      </button>
-      <button class="preset-pill" id="btn-seed-nov3" data-preset="nov3">
-        <span class="pill-dot amber"></span>
-        <span>3 Nov Answer Check</span>
-      </button>
-      <button class="preset-pill ghost" id="btn-seed-empty" data-preset="empty">
-        <span class="pill-dot purple"></span>
-        <span>Missing Memory Test</span>
-      </button>
-    </section>
+    <!-- Preset Scenarios Toolbar -->
+    <div class="preset-toolbar">
+      <span class="preset-heading">Scenarios</span>
+      <button class="preset-btn" data-preset="crm">Monday CRM Shortlist</button>
+      <button class="preset-btn" data-preset="postgres">Last Tuesday Postgres</button>
+      <button class="preset-btn" data-preset="nov3">3 Nov Answer Check</button>
+      <button class="preset-btn" data-preset="empty">Missing Memory Test</button>
+    </div>
 
-    <!-- Active View Area -->
-    <main class="mac-body">
-      <!-- VIEW 1: Main Stream & Conversation -->
-      <div class="view-pane active" id="view-chat">
-        <div class="chat-scroll" id="chat-viewport">
-          <div class="welcome-hero" id="welcome-card">
-            <div class="app-avatar">
-              <span class="avatar-glyph">✦</span>
-            </div>
-            <h2>Minimi Temporal Agent</h2>
-            <p>Knowledge decay detection & live web search grounded against your historical memory.</p>
-
-            <div class="quick-prompts">
-              <div class="prompt-card" data-query="On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?">
-                <span class="prompt-icon">􀉉</span>
-                <div class="prompt-content">
-                  <div class="prompt-title">CRM Pricing Decay</div>
-                  <div class="prompt-desc">Checks HubSpot, Pipedrive, Zoho, Close & Freshsales since Monday</div>
-                </div>
-              </div>
-              <div class="prompt-card" data-query="Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?">
-                <span class="prompt-icon">􀈀</span>
-                <div class="prompt-content">
-                  <div class="prompt-title">Postgres Hosting Changes</div>
-                  <div class="prompt-desc">Recalls Supabase ($25) and Neon from last Tuesday & probes live web</div>
-                </div>
-              </div>
-              <div class="prompt-card" data-query="What did I ask you on 3 November? Is your answer still correct today?">
-                <span class="prompt-icon">􀈊</span>
-                <div class="prompt-content">
-                  <div class="prompt-title">Date Recall & Grounding</div>
-                  <div class="prompt-desc">Recalls Playwright recommendation from 3 Nov and validates today</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="messages-container" id="messages-list"></div>
+    <!-- Main Chat Workspace -->
+    <main class="chat-viewport" id="chat-viewport">
+      <div class="welcome-container" id="welcome-card">
+        <div class="welcome-header">
+          <h1>Minimi Agent</h1>
+          <p>Temporal memory verification and live web search. Ask any question, or check if past decisions have changed.</p>
         </div>
-      </div>
 
-      <!-- VIEW 2: FactLens Itemized Diffs View -->
-      <div class="view-pane" id="view-diff">
-        <div class="diff-view-content">
-          <div class="diff-header-bar">
-            <h3>FactLens Knowledge Graph Inspector</h3>
-            <span class="diff-counter" id="diff-counter">0 Verified Entities</span>
+        <div class="prompt-grid">
+          <div class="prompt-card" data-query="On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?">
+            <div class="prompt-card-title">CRM Pricing Decay</div>
+            <div class="prompt-card-desc">Compare HubSpot, Pipedrive, Zoho, Close and Freshsales with Monday baseline</div>
           </div>
-          <div class="diff-grid" id="diff-cards-grid">
-            <div class="empty-state">
-              <p>Run a scenario or query to view itemized delta cards comparing $T_0$ baselines with live $T_{now}$ search results.</p>
-            </div>
+          <div class="prompt-card" data-query="Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?">
+            <div class="prompt-card-title">Postgres Hosting Changes</div>
+            <div class="prompt-card-desc">Verify Supabase ($25/mo) and Neon against live web pricing</div>
+          </div>
+          <div class="prompt-card" data-query="What did I ask you on 3 November? Is your answer still correct today?">
+            <div class="prompt-card-title">Date Recall & Grounding</div>
+            <div class="prompt-card-desc">Recall previous recommendation from 3 November and check current status</div>
           </div>
         </div>
       </div>
 
-      <!-- VIEW 3: Live SQLite Database Inspector -->
-      <div class="view-pane" id="view-db">
-        <div class="db-inspector-content">
-          <div class="db-tabs-sub">
-            <button class="db-subtab active" data-dbtab="tab-threads">Threads</button>
-            <button class="db-subtab" data-dbtab="tab-turns">Turns (History)</button>
-            <button class="db-subtab" data-dbtab="tab-observations">Observations (EAV)</button>
-            <button class="db-subtab" data-dbtab="tab-cache">Search Cache</button>
-          </div>
-          <div class="db-tables-scroll">
-            <div id="tab-threads" class="db-tab-pane active"></div>
-            <div id="tab-turns" class="db-tab-pane"></div>
-            <div id="tab-observations" class="db-tab-pane"></div>
-            <div id="tab-cache" class="db-tab-pane"></div>
-          </div>
-        </div>
-      </div>
+      <div class="messages-list" id="messages-list"></div>
     </main>
 
-    <!-- Raycast-Style Command Input Bar -->
-    <footer class="mac-input-footer">
-      <div class="search-progress-bar" id="status-banner"></div>
-      <form id="chat-form" class="command-bar">
-        <div class="command-leading">
-          <span class="command-symbol">􀊫</span>
-        </div>
+    <!-- Bottom Input Console -->
+    <footer class="console-footer">
+      <div class="status-indicator" id="status-banner"></div>
+      <form id="chat-form" class="input-capsule">
         <textarea
           id="user-input"
           rows="1"
-          placeholder="Ask a question or check if past data changed (e.g. 'Has pricing changed since Monday?')..."
+          placeholder="Ask a question or check if past data changed..."
         ></textarea>
-        <div class="command-trailing">
-          <span class="key-hint">Return ↵</span>
-          <button type="submit" class="btn-send-pill" id="btn-submit">
-            <span>Send</span>
-          </button>
+        <div class="capsule-actions">
+          <span class="shortcut-tag">Return</span>
+          <button type="submit" class="btn-send" id="btn-submit">Send</button>
         </div>
       </form>
     </footer>
+
+    <!-- Database Inspector Panel (Slide-out / Overlay) -->
+    <div id="db-panel" class="db-panel" style="display: none;">
+      <div class="db-panel-header">
+        <div class="db-panel-title">
+          <span>SQLite Database</span>
+          <code class="db-path-badge">data/minimi.db</code>
+        </div>
+        <button id="btn-close-db" class="btn-subtle">Close</button>
+      </div>
+      <div class="db-tab-bar">
+        <button class="db-nav-tab active" data-tab="tab-threads">Threads</button>
+        <button class="db-nav-tab" data-tab="tab-turns">Turns</button>
+        <button class="db-nav-tab" data-tab="tab-observations">Observations</button>
+        <button class="db-nav-tab" data-tab="tab-cache">Search Cache</button>
+      </div>
+      <div class="db-panel-body">
+        <div id="tab-threads" class="db-view active"></div>
+        <div id="tab-turns" class="db-view"></div>
+        <div id="tab-observations" class="db-view"></div>
+        <div id="tab-cache" class="db-view"></div>
+      </div>
+    </div>
   </div>
 
   <script src="app.js"></script>

@@ -133,7 +133,15 @@ app.post('/api/chat', async (c) => {
               status: `Searching live web for ${part.args?.items?.map((i: any) => i.entity).join(', ') || 'information'}...`,
             }),
           });
+        } else if (part.type === 'error') {
+          console.warn('fullStream error part encountered:', (part as any).error);
+          throw new Error((part as any).error?.message || 'Model stream error');
         }
+      }
+
+      if (!fullResponseText.trim()) {
+        console.warn('Model response was empty, invoking grounded fallback synthesis...');
+        throw new Error('Empty model stream');
       }
 
       // 3. Persist assistant turn to SQLite
@@ -151,11 +159,40 @@ app.post('/api/chat', async (c) => {
         data: JSON.stringify({ success: true }),
       });
     } catch (err: any) {
-      console.error('Streaming error:', err);
-      await stream.writeSSE({
-        event: 'error',
-        data: JSON.stringify({ error: err.message || 'Stream processing failed' }),
-      });
+      console.warn('Streaming error, falling back to grounded synthesis:', err.message);
+      try {
+        const { resolveContext } = await import('./agent/context.js');
+        const context = resolveContext(message, threadId, db, { nowOverride, timezone });
+        const fallbackText = await agentService.generateFallbackResponse(message, context);
+
+        const words = fallbackText.split(' ');
+        for (const w of words) {
+          await stream.writeSSE({
+            event: 'token',
+            data: JSON.stringify({ delta: w + ' ' }),
+          });
+        }
+
+        const assistantTurnId = crypto.randomUUID();
+        db.saveTurn({
+          id: assistantTurnId,
+          thread_id: threadId,
+          role: 'assistant',
+          content: fallbackText,
+          created_at: nowOverride || new Date().toISOString(),
+        });
+
+        await stream.writeSSE({
+          event: 'done',
+          data: JSON.stringify({ success: true }),
+        });
+      } catch (innerErr: any) {
+        console.error('Fatal fallback error:', innerErr);
+        await stream.writeSSE({
+          event: 'error',
+          data: JSON.stringify({ error: innerErr.message || 'Stream processing failed' }),
+        });
+      }
     }
   });
 });

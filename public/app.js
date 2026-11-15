@@ -4,7 +4,8 @@ const welcomeCard = document.getElementById('welcome-card');
 const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
 const statusBanner = document.getElementById('status-banner');
-const clockDisplay = document.querySelector('.status-clock .clock-time');
+const clockDisplay = document.getElementById('clock-display');
+const dbPanel = document.getElementById('db-panel');
 
 // Update macOS clock display
 function updateClock() {
@@ -13,38 +14,11 @@ function updateClock() {
     clockDisplay.textContent = now.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
     });
   }
 }
 setInterval(updateClock, 1000);
 updateClock();
-
-// Segmented Navigation Control (Intelligence / FactLens Diffs / SQLite State)
-document.querySelectorAll('.segmented-control .segment').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.segmented-control .segment').forEach((s) => s.classList.remove('active'));
-    document.querySelectorAll('.view-pane').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    const target = document.getElementById(btn.getAttribute('data-view'));
-    if (target) target.classList.add('active');
-
-    if (btn.getAttribute('data-view') === 'view-db') {
-      loadDatabaseState();
-    }
-  });
-});
-
-// Database subtabs
-document.querySelectorAll('.db-subtab').forEach((sub) => {
-  sub.addEventListener('click', () => {
-    document.querySelectorAll('.db-subtab').forEach((s) => s.classList.remove('active'));
-    document.querySelectorAll('.db-tab-pane').forEach((p) => p.classList.remove('active'));
-    sub.classList.add('active');
-    const pane = document.getElementById(sub.getAttribute('data-dbtab'));
-    if (pane) pane.classList.add('active');
-  });
-});
 
 // Auto-expand textarea & Enter to submit
 userInput.addEventListener('input', () => {
@@ -73,10 +47,30 @@ document.getElementById('btn-reset').addEventListener('click', () => {
   messagesList.innerHTML = '';
   welcomeCard.style.display = 'flex';
   statusBanner.textContent = 'Session reset. New clean memory initialized.';
-  setTimeout(() => (statusBanner.textContent = ''), 3000);
+  setTimeout(() => (statusBanner.textContent = ''), 2500);
 });
 
-// Grader Quick Scenario Handlers
+// Database Inspector Toggle
+document.getElementById('btn-toggle-db').addEventListener('click', async () => {
+  dbPanel.style.display = 'flex';
+  await loadDatabaseState();
+});
+
+document.getElementById('btn-close-db').addEventListener('click', () => {
+  dbPanel.style.display = 'none';
+});
+
+document.querySelectorAll('.db-nav-tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.db-nav-tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.db-view').forEach((v) => v.classList.remove('active'));
+    tab.classList.add('active');
+    const target = document.getElementById(tab.getAttribute('data-tab'));
+    if (target) target.classList.add('active');
+  });
+});
+
+// Grader Quick Scenario Presets
 const PRESETS = {
   crm: {
     title: 'Monday CRM Shortlist',
@@ -89,7 +83,12 @@ const PRESETS = {
       },
       {
         role: 'assistant',
-        content: `Here are 5 shortlisted CRM tools for a 20-person sales team:\n1. HubSpot Sales Hub - $20/seat/mo Starter plan\n2. Pipedrive - $14/user/mo Essential plan\n3. Zoho CRM - $14/user/mo Standard plan\n4. Close - $49/user/mo Startup plan\n5. Freshsales - $15/user/mo Growth plan`,
+        content: `Here are 5 shortlisted CRM tools for a 20-person sales team:
+1. HubSpot Sales Hub - $20/seat/mo Starter plan
+2. Pipedrive - $14/user/mo Essential plan
+3. Zoho CRM - $14/user/mo Standard plan
+4. Close - $49/user/mo Startup plan
+5. Freshsales - $15/user/mo Growth plan`,
         createdAt: '2026-11-09T09:31:00Z',
       },
     ],
@@ -107,7 +106,9 @@ const PRESETS = {
       },
       {
         role: 'assistant',
-        content: `Top Postgres hosting options:\n1. Supabase: Pro tier starts at $25/month with 8GB storage and automatic backups.\n2. Neon: Serverless Postgres with autoscaling compute and a free tier with 0.5 GB storage.`,
+        content: `Top Postgres hosting options:
+1. Supabase: Pro tier starts at $25/month with 8GB storage and automatic backups.
+2. Neon: Serverless Postgres with autoscaling compute and a free tier with 0.5 GB storage.`,
         createdAt: '2026-11-03T14:01:00Z',
       },
     ],
@@ -141,9 +142,9 @@ const PRESETS = {
   },
 };
 
-document.querySelectorAll('.preset-pill').forEach((pill) => {
-  pill.addEventListener('click', async () => {
-    const key = pill.getAttribute('data-preset');
+document.querySelectorAll('.preset-btn').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const key = btn.getAttribute('data-preset');
     const p = PRESETS[key];
     if (!p) return;
 
@@ -164,7 +165,7 @@ document.querySelectorAll('.preset-pill').forEach((pill) => {
 
     userInput.value = p.query;
     userInput.focus();
-    statusBanner.textContent = `✓ Seeded ${p.title}. Press Send or Return to execute verification.`;
+    statusBanner.textContent = `Ready: ${p.title}. Press Send or Return to execute.`;
   });
 });
 
@@ -172,16 +173,16 @@ document.querySelectorAll('.preset-pill').forEach((pill) => {
 function renderMarkdown(text) {
   if (!text) return '';
   return text
-    .replace(/^### (.*$)/gim, '<h3 style="font-size: 1.05rem; font-weight:700; margin: 12px 0 6px;">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 style="font-size: 1.2rem; font-weight:700; margin: 14px 0 8px;">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 style="font-size: 1.35rem; font-weight:700; margin: 16px 0 10px;">$1</h1>')
+    .replace(/^### (.*$)/gim, '<h3 style="font-size: 1rem; font-weight:600; margin: 12px 0 6px;">$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2 style="font-size: 1.15rem; font-weight:600; margin: 14px 0 8px;">$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1 style="font-size: 1.3rem; font-weight:700; margin: 16px 0 10px;">$1</h1>')
     .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-    .replace(/`\[Changed\]`/gim, '<span style="background:var(--amber-bg); color:var(--amber); padding:2px 8px; border-radius:4px; font-weight:600; font-family:var(--font-mono); font-size:0.76rem;">[Changed]</span>')
-    .replace(/`\[No change found\]`/gim, '<span style="background:var(--emerald-bg); color:var(--emerald); padding:2px 8px; border-radius:4px; font-weight:600; font-family:var(--font-mono); font-size:0.76rem;">[No change found]</span>')
-    .replace(/`\[Unverified\]`/gim, '<span style="background:rgba(168,85,247,0.15); color:var(--purple); padding:2px 8px; border-radius:4px; font-weight:600; font-family:var(--font-mono); font-size:0.76rem;">[Unverified]</span>')
-    .replace(/`([^`]+)`/gim, '<code style="background:rgba(255,255,255,0.08); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:0.82rem;">$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1 ↗</a>')
+    .replace(/`\[Changed\]`/gim, '<span class="status-tag changed">[Changed]</span>')
+    .replace(/`\[No change found\]`/gim, '<span class="status-tag no-change">[No change found]</span>')
+    .replace(/`\[Unverified\]`/gim, '<span class="status-tag unverified">[Unverified]</span>')
+    .replace(/`([^`]+)`/gim, '<code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:0.82rem;">$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\n\n/gim, '<br><br>');
 }
 
@@ -195,25 +196,25 @@ chatForm.addEventListener('submit', async (e) => {
   userInput.value = '';
   userInput.style.height = 'auto';
 
-  // Append user bubble
+  // Append user message bubble
   const userRow = document.createElement('div');
-  userRow.className = 'msg-row user';
-  userRow.innerHTML = `<div class="msg-bubble">${query}</div>`;
+  userRow.className = 'message-item user';
+  userRow.innerHTML = `<div class="bubble">${query}</div>`;
   messagesList.appendChild(userRow);
 
-  // Append assistant placeholder
+  // Append assistant message container (empty, no placeholder)
   const assistantRow = document.createElement('div');
-  assistantRow.className = 'msg-row assistant';
+  assistantRow.className = 'message-item assistant';
   const assistantBubble = document.createElement('div');
-  assistantBubble.className = 'msg-bubble';
-  assistantBubble.innerHTML = '<span style="color:var(--text-muted); font-family:var(--font-mono); font-size:0.8rem;">Connecting to agent...</span>';
+  assistantBubble.className = 'bubble';
+  assistantBubble.innerHTML = '';
   assistantRow.appendChild(assistantBubble);
   messagesList.appendChild(assistantRow);
 
   const scrollViewport = document.getElementById('chat-viewport');
   scrollViewport.scrollTop = scrollViewport.scrollHeight;
 
-  statusBanner.textContent = 'Resolving temporal memory & fanning out live search...';
+  statusBanner.textContent = 'Searching web and evaluating baseline...';
 
   try {
     const response = await fetch('/api/chat', {
@@ -252,11 +253,14 @@ chatForm.addEventListener('submit', async (e) => {
             } else if (data.status) {
               statusBanner.textContent = data.status;
             } else if (data.text) {
-              // Preamble event
+              // Preamble event (clean without emoji)
+              const cleanText = data.text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|⚡|✦|📊/gu, '').trim();
               const preambleDiv = document.createElement('div');
-              preambleDiv.className = 'preamble-badge';
-              preambleDiv.innerHTML = `⚡ ${data.text}`;
+              preambleDiv.className = 'preamble-label';
+              preambleDiv.textContent = cleanText;
               assistantBubble.parentNode.insertBefore(preambleDiv, assistantBubble);
+            } else if (data.error) {
+              assistantBubble.innerHTML = `<span style="color:#ef4444;">${data.error}</span>`;
             }
           } catch {}
         }
@@ -265,12 +269,12 @@ chatForm.addEventListener('submit', async (e) => {
     }
     statusBanner.textContent = '';
   } catch (err) {
-    assistantBubble.innerHTML = `<span style="color:#ef4444;">Error: ${err.message}</span>`;
+    assistantBubble.innerHTML = `<span style="color:#ef4444;">${err.message}</span>`;
     statusBanner.textContent = '';
   }
 });
 
-// Live Database Inspector
+// Database State Loader
 async function loadDatabaseState() {
   try {
     const res = await fetch('/api/db');
@@ -288,7 +292,7 @@ async function loadDatabaseState() {
 function renderTable(containerId, rows, columns) {
   const container = document.getElementById(containerId);
   if (!rows || rows.length === 0) {
-    container.innerHTML = '<p style="color:var(--text-muted); padding:14px; font-size:0.82rem;">No records found in this table.</p>';
+    container.innerHTML = '<p style="color:var(--text-muted); padding:12px; font-size:0.82rem;">No records found in this table.</p>';
     return;
   }
 
