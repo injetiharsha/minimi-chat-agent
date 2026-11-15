@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minimi — Temporal Chat Agent</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-dot"></div>
+        <h1>minimi</h1>
+        <span class="badge">Temporal Chat Agent</span>
+      </div>
+      <div class="header-right">
+        <span class="clock-display" id="clock-display">Loading time...</span>
+        <button id="btn-reset" class="btn-text">Reset Session</button>
+      </div>
+    </header>
+
+    <!-- Grader Quick-Seed Toolbar -->
+    <div class="seed-toolbar">
+      <span class="toolbar-label">Grading Presets:</span>
+      <button class="btn-pill" id="btn-seed-crm">1. Monday CRM Shortlist</button>
+      <button class="btn-pill" id="btn-seed-postgres">2. Last Tuesday Postgres</button>
+      <button class="btn-pill" id="btn-seed-nov3">3. 3 Nov Answer Check</button>
+    </div>
+
+    <!-- Chat Messages Window -->
+    <main class="chat-viewport" id="chat-viewport">
+      <div class="welcome-card" id="welcome-card">
+        <h2>Welcome to Minimi</h2>
+        <p>I am your temporal chat agent with live web search. Ask me anything, or test my memory against real-world updates.</p>
+        <div class="example-prompts">
+          <div class="prompt-chip" data-query="On Monday we shortlisted 5 CRM tools for a 20-person sales team. Has any of them changed pricing or shipped something big since?">
+            "On Monday we shortlisted 5 CRM tools... has pricing changed since?"
+          </div>
+          <div class="prompt-chip" data-query="Last Tuesday I asked you about Postgres hosting. Has any pricing changed since then?">
+            "Last Tuesday I asked you about Postgres hosting. Has pricing changed?"
+          </div>
+          <div class="prompt-chip" data-query="What are the best open-source AI agent frameworks in 2026?">
+            "What are the best open-source AI agent frameworks in 2026?"
+          </div>
+        </div>
+      </div>
+      <div class="messages-list" id="messages-list"></div>
+    </main>
+
+    <!-- Chat Input Form -->
+    <footer class="app-footer">
+      <div class="status-banner" id="status-banner"></div>
+      <form id="chat-form" class="input-form">
+        <textarea 
+          id="user-input" 
+          placeholder="Ask a question or check if past information changed..." 
+          rows="1"
+          autofocus
+        ></textarea>
+        <button type="submit" id="btn-send" class="btn-send" aria-label="Send message">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </form>
+    </footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
