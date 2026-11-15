@@ -15,6 +15,7 @@ const userInput = document.getElementById('user-input');
 const clockDisplay = document.getElementById('clock-display');
 const appSidebar = document.getElementById('app-sidebar');
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+const btnHome = document.getElementById('btn-home');
 const btnNewChat = document.getElementById('btn-new-chat');
 const navThreadTitle = document.getElementById('nav-thread-title');
 const chatViewport = document.getElementById('chat-viewport');
@@ -147,6 +148,13 @@ userInput.addEventListener('keydown', (e) => {
 if (btnToggleSidebar && appSidebar) {
   btnToggleSidebar.addEventListener('click', () => {
     appSidebar.classList.toggle('collapsed');
+  });
+}
+
+// Home Button
+if (btnHome) {
+  btnHome.addEventListener('click', () => {
+    startNewSession('New Session');
   });
 }
 

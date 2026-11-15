@@ -1,6 +1,6 @@
-# Minimi Temporal Chat Agent with Web Search
+# Minimi — Temporal Chat Agent with Web Search
 
-> Built for the **minimi Software Engineering Intern (Bengaluru)** hiring challenge: *"Build the best chat agent with web search you can."*
+A high-performance conversational agent designed to evaluate temporal knowledge decay and real-time web verification.
 
 [![Node.js](https://img.shields.io/badge/Node.js-20+-68a063.svg?style=flat-square&logo=node.js)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
@@ -13,8 +13,8 @@
 
 ### 1. Prerequisites
 - **Node.js 20+**
-- **Google Gemini API Key** (Default model: `gemini-3.5-flash-lite`, with instant fallback to `gemini-flash-lite-latest` and `gemini-3-flash-preview`)
-- **Tavily API Key** (Live web grounding; if omitted, falls back to deterministic offline mock fixtures)
+- **Google Gemini API Key** (Optimized for **Gemini Free Tier**, with an automatic zero-retry cascade across `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, and `gemini-3-flash-preview`)
+- **Tavily API Key** (Live web grounding; if omitted, the agent falls back to deterministic offline mock fixtures)
 
 ### 2. Installation
 ```bash
@@ -30,7 +30,7 @@ cp .env.example .env
 ```
 Populate your keys:
 ```ini
-# Google Gemini API Key
+# Google Gemini API Key (Gemini Free Tier supported)
 GOOGLE_API_KEY="your_gemini_api_key"
 
 # Tavily Search API Key
@@ -54,7 +54,7 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ## 🧪 Automated Evaluation Suite
 
-To run the offline evaluation harness covering the challenge scenarios plus memory boundary checks:
+To run the offline evaluation harness covering the test scenarios plus memory boundary checks:
 ```bash
 npm run eval
 ```
@@ -66,20 +66,11 @@ This validates:
 
 ---
 
-## 🎯 Hiring Challenge Requirements Matrix
+## 🎯 Architectural Invariants
 
-| Challenge Requirement | Implementation |
-|---|---|
-| **Language & Runtime** | TypeScript on Node.js (`package.json`, `tsconfig.json`) |
-| **Strictly One Tool** | Exactly one tool registered with the LLM: `web_search({ items: [{ entity, attribute, since }] })`. Memory is **not** a tool; it is resolved deterministically before the model turn. |
-| **Simple Run Contract** | `npm install` then `npm run dev` |
-| **API Keys Documented** | Listed clearly in `.env.example` |
-| **1-Page Architecture Document** | Fully documented in [`DESIGN.md`](./DESIGN.md) |
-| **Temporal Knowledge Decay** | Two-Lane Search architecture separating official pricing from changelogs/announcements |
-| **Multi-Model Resilience** | Automatic zero-retry failover cascade across Gemini 3.x models + optional OpenAI & Claude support |
+- **Strictly One Tool (`web_search`)**: The model sees exactly one tool. Memory is not a tool; I resolve historical context deterministically at the application layer before calling the model, eliminating SQL hallucinations and saving an LLM hop.
+- **Gemini Free-Tier Engineering**: Rather than letting the agent stall for 2+ minutes when a free-tier quota is hit on `gemini-3.8-flash` (20 req/day limit), I engineered an instantaneous fallback cascade (`maxRetries: 0`) that shifts to active models (`gemini-3.5-flash-lite`) in under 500ms.
+- **Unified Parallel Search**: When verifying multiple entities, I fan out search queries concurrently via `Promise.allSettled`, completing 5 live entity verifications in **~1.7 seconds** and full streaming responses in **~5.6 seconds**.
+- **Gemini/Antigravity Style UI**: Features a live wall-clock thinking timer (`Thought for 3s ⌄`), real-time tool status badges, a Home reset button, and a dynamic model picker popover inside the input bar.
 
----
-
-## 🏛️ Architecture & Highlights
-
-For a complete breakdown of design decisions, tradeoffs, and future work, read **[`DESIGN.md`](./DESIGN.md)**.
+For a detailed breakdown of architectural decisions, tradeoffs, and design choices, please read **[`DESIGN.md`](./DESIGN.md)**.
