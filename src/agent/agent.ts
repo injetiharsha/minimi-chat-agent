@@ -1,5 +1,7 @@
 import dns from 'node:dns';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { streamText, generateText, tool, type CoreMessage } from 'ai';
 import { SearchService, webSearchSchema, type WebSearchParams } from '../tools/search.js';
 import { buildSystemPrompt } from './prompt.js';
@@ -8,18 +10,23 @@ import type { DatabaseClient } from '../db/client.js';
 
 dns.setDefaultResultOrder('ipv4first');
 
+export const GEMINI_CASCADE_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3-flash-preview',
+];
+
 export class AgentService {
   private db: DatabaseClient;
   private searchService: SearchService;
-  private modelName: string;
   private googleProvider: ReturnType<typeof createGoogleGenerativeAI>;
   private lastThoughtSignature: string | null = null;
 
-  constructor(db: DatabaseClient, searchService?: SearchService, modelName: string = 'gemini-flash-lite-latest') {
+  constructor(db: DatabaseClient, searchService?: SearchService, modelName?: string) {
     this.db = db;
     this.searchService = searchService || new SearchService(process.env.TAVILY_API_KEY, db);
-    this.modelName = process.env.GEMINI_MODEL || modelName;
-    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
+    const googleApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GOOGLE_API_KEY;
 
     // Custom fetch to seamlessly handle Google's thoughtSignature contract across multi-step turns
     const customFetch: typeof fetch = async (url, init) => {
@@ -65,29 +72,22 @@ export class AgentService {
           })
           .catch(() => {});
       } else if (response.body) {
-        // Intercept SSE stream chunks for streaming mode
-        const [streamForConsumer, streamForInspector] = response.body.tee();
-        const reader = streamForInspector.getReader();
         const decoder = new TextDecoder();
-
-        (async () => {
-          let buffer = '';
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const match = buffer.match(/"thoughtSignature":\s*"([^"]+)"/);
+        let sseBuffer = '';
+        const transformStream = new TransformStream({
+          transform: (chunk, controller) => {
+            controller.enqueue(chunk);
+            try {
+              sseBuffer += decoder.decode(chunk, { stream: true });
+              const match = sseBuffer.match(/"thoughtSignature":\s*"([^"]+)"/);
               if (match) {
                 this.lastThoughtSignature = match[1];
               }
-            }
-          } catch {
-            // stream reading finished or aborted
-          }
-        })();
+            } catch {}
+          },
+        });
 
-        return new Response(streamForConsumer, {
+        return new Response(response.body.pipeThrough(transformStream), {
           status: response.status,
           statusText: response.statusText,
           headers: response.headers,
@@ -98,24 +98,46 @@ export class AgentService {
     };
 
     this.googleProvider = createGoogleGenerativeAI({
-      apiKey,
+      apiKey: googleApiKey,
       fetch: customFetch,
     });
+  }
+
+  getModel(modelName: string, providerName?: string) {
+    const prov = providerName || 'google';
+
+    if (prov === 'openai' || modelName.startsWith('gpt') || modelName.startsWith('o3')) {
+      const openai = createOpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+      return openai(modelName || 'gpt-4o-mini');
+    }
+
+    if (prov === 'anthropic' || modelName.startsWith('claude')) {
+      const anthropic = createAnthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      });
+      return anthropic(modelName || 'claude-3-5-sonnet-20241022');
+    }
+
+    // Default: Google Gemini with thoughtSignature contract handling
+    return this.googleProvider(modelName || 'gemini-3.8-flash');
   }
 
   async run(
     userMessage: string,
     threadId: string,
-    options: { nowOverride?: string; timezone?: string } = {}
+    options: { nowOverride?: string; timezone?: string; provider?: string; model?: string } = {}
   ) {
     const context = resolveContext(userMessage, threadId, this.db, options);
     const systemPrompt = buildSystemPrompt(context);
 
-    // Prepare message history
-    const historyMessages: CoreMessage[] = context.recentTurns.map((turn) => ({
-      role: turn.role,
-      content: turn.content,
-    }));
+    const historyMessages: CoreMessage[] = (context.recentTurns || [])
+      .filter((turn) => turn.content !== userMessage)
+      .map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+      }));
 
     const messages: CoreMessage[] = [
       ...historyMessages,
@@ -130,31 +152,44 @@ export class AgentService {
       },
     });
 
-    try {
-      const result = await generateText({
-        model: this.googleProvider(this.modelName),
-        system: systemPrompt,
-        messages,
-        tools: {
-          web_search: searchToolInstance,
-        },
-        maxSteps: 5,
-      });
+    const targetProvider = options.provider || process.env.LLM_PROVIDER || 'google';
+    const primaryModel = options.model || (targetProvider === 'google' ? 'gemini-3.8-flash' : targetProvider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-20241022');
+    const modelsToTry = targetProvider === 'google'
+      ? Array.from(new Set([primaryModel, ...GEMINI_CASCADE_MODELS]))
+      : [primaryModel];
 
-      return {
-        text: result.text,
-        context,
-        steps: result.steps,
-      };
-    } catch (err: any) {
-      console.warn(`Model invocation failed (${err.message}). Generating grounded fallback response from live web search...`);
-      const fallbackText = await this.generateFallbackResponse(userMessage, context);
-      return {
-        text: fallbackText,
-        context,
-        steps: [],
-      };
+    for (const modelCandidate of modelsToTry) {
+      try {
+        const modelInstance = this.getModel(modelCandidate, targetProvider);
+        const result = await generateText({
+          model: modelInstance as any,
+          system: systemPrompt,
+          messages,
+          tools: {
+            web_search: searchToolInstance,
+          },
+          maxSteps: 5,
+          maxRetries: 0,
+        });
+
+        return {
+          text: result.text,
+          context,
+          steps: result.steps,
+          activeModel: modelCandidate,
+        };
+      } catch (err: any) {
+        console.warn(`Model ${modelCandidate} failed (${err.message}), trying next candidate...`);
+      }
     }
+
+    const fallbackText = await this.generateFallbackResponse(userMessage, context);
+    return {
+      text: fallbackText,
+      context,
+      steps: [],
+      activeModel: 'fallback-synthesis',
+    };
   }
 
   async generateFallbackResponse(userMessage: string, context: ReturnType<typeof resolveContext>): Promise<string> {
@@ -208,143 +243,40 @@ export class AgentService {
       return `I don't have a record of our conversation regarding email marketing tools. Could you remind me which specific tools we discussed?`;
     }
 
-    // Specific guide for Supabase Auth / Login requests
-    if (/login|auth.*supabase|supabase.*auth|supabase.*login|login.*supabase/i.test(userMessage)) {
-      return `Here is a complete guide to building a login page with Supabase Auth.
+    // Live search dispatch for dynamic queries without pre-baked static lists
+    try {
+      const searchRes = await this.searchService.execute({
+        items: [{ entity: userMessage, attribute: 'pricing features alternatives' }],
+      });
+      if (searchRes.length > 0 && searchRes[0].current_state.text) {
+        return searchRes[0].current_state.text;
+      }
+    } catch {}
 
-Supabase provides authentication services via a REST API. You can either use the official Supabase Client Library (\`@supabase/supabase-js\`) which handles token refresh and session state under the hood, or call the Supabase Auth REST API directly using \`fetch()\`.
-
----
-
-### Method 1: Using the Supabase JS Library (Recommended)
-This approach automatically manages local token storage, session refresh, and API headers.
-
-#### 1. HTML (\`index.html\`)
-\`\`\`html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Login with Supabase</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-</head>
-<body>
-  <form id="loginForm">
-    <h2>Account Login</h2>
-    <input type="email" id="email" placeholder="Email" required />
-    <input type="password" id="password" placeholder="Password" required />
-    <button type="submit">Sign In</button>
-  </form>
-  <div id="message"></div>
-  <script src="app.js"></script>
-</body>
-</html>
-\`\`\`
-
-#### 2. JavaScript (\`app.js\`)
-\`\`\`javascript
-const SUPABASE_URL = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-const loginForm = document.getElementById('loginForm');
-const messageEl = document.getElementById('message');
-
-loginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = document.getElementById('email').value;
-  const password = document.getElementById('password').value;
-
-  messageEl.textContent = 'Logging in...';
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email,
-    password: password,
-  });
-
-  if (error) {
-    messageEl.textContent = 'Error: ' + error.message;
-    messageEl.style.color = 'red';
-  } else {
-    messageEl.textContent = 'Login successful!';
-    messageEl.style.color = 'green';
-    console.log('JWT Access Token:', data.session.access_token);
-  }
-});
-\`\`\`
-
----
-
-### Method 2: Calling Supabase REST API Directly (\`fetch\`)
-Direct POST request to the Supabase Auth token endpoint without the client library:
-
-\`\`\`javascript
-async function loginDirectRest(email, password) {
-  const response = await fetch('https://YOUR_PROJECT_ID.supabase.co/auth/v1/token?grant_type=password', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': 'YOUR_SUPABASE_ANON_KEY',
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error_description || 'Login failed');
-  
-  localStorage.setItem('supabase_token', data.access_token);
-  return data;
-}
-\`\`\``;
-    }
-
-    // Follow-up request for different/alternative hosting platforms
-    const prevText = (context.recentTurns || []).map((t) => t.content).join(' ');
-    const isDifferentRequest =
-      /different|alternative|other|more|next/i.test(userMessage) ||
-      (/different/i.test(userMessage) && (/hosting|platform/i.test(prevText) || /hosting|platform/i.test(userMessage)));
-
-    if (isDifferentRequest) {
-      return `Here are 5 alternative cloud hosting platforms and their current pricing:
-
-1. **Vercel**: Free Hobby tier with 100GB bandwidth; Pro tier starts at **$20/seat/mo** with preview deployments, Edge Middleware, and serverless functions.
-2. **Netlify**: Free Starter tier with 100GB bandwidth and 300 build minutes; Pro tier at **$19/user/mo** with background functions and form handling.
-3. **DigitalOcean App Platform**: Free tier for static sites; Basic containers start at **$5/month** with managed databases, automatic SSL, and dedicated CPU droplets.
-4. **Heroku**: Eco dynos starting at **$5/month** (shared pool of 1,000 dyno hours); Basic dynos at **$7/month** with automated add-ons and Git deploy.
-5. **Cloudflare Pages / Workers**: Free tier with 100,000 requests/day; Workers Paid plan starts at **$5/month** with 10 million requests included and global edge execution.
-
-All options provide automated provisioning, scaling compute, and built-in database support.`;
-    }
-
-    // Dynamic synthesis for fresh queries (e.g. "Get me top hosting platforms and their pricings")
-    if (/hosting|platform|postgres|database|serverless/i.test(userMessage)) {
-      return `Here are top cloud hosting platforms and their current pricing:
-
-1. **Render**: Free tier for static sites and web services; Individual instances start at **$7/month** with automated SSL and Git-based continuous deployment.
-2. **Supabase**: Generous free tier with 500MB database storage; Pro tier at **$25/month** including compute credits, daily backups, and edge functions.
-3. **Neon**: Serverless Postgres with a free tier offering 0.5 GB storage; consumption-based autoscaling compute.
-4. **Fly.io**: Free allowances for small workloads; pay-as-you-go based on shared CPU cores starting around **$3-$5/month**.
-5. **Railway**: Starter trial with **$5** monthly credit; Hobby plan at **$5/month** plus execution resources.
-
-All options provide automated provisioning, scaling compute, and built-in database support.`;
-    }
-
-    // Default dynamic live search fallback
     return `I evaluated current live web data regarding **${userMessage}**. Official documentation and real-time sources confirm standard operational availability with no breaking changes announced.`;
   }
 
   stream(
     userMessage: string,
     threadId: string,
-    options: { nowOverride?: string; timezone?: string } = {}
+    options: {
+      nowOverride?: string;
+      timezone?: string;
+      provider?: string;
+      model?: string;
+      userTurnId?: string;
+    } = {}
   ) {
     const context = resolveContext(userMessage, threadId, this.db, options);
     const systemPrompt = buildSystemPrompt(context);
 
-    const historyMessages: CoreMessage[] = context.recentTurns.map((turn) => ({
-      role: turn.role,
-      content: turn.content,
-    }));
+    // Full conversation history from thread, excluding current turn to prevent duplication
+    const historyMessages: CoreMessage[] = (context.recentTurns || [])
+      .filter((turn) => turn.id !== options.userTurnId && turn.content !== userMessage)
+      .map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+      }));
 
     const messages: CoreMessage[] = [
       ...historyMessages,
@@ -359,8 +291,23 @@ All options provide automated provisioning, scaling compute, and built-in databa
       },
     });
 
+    const targetProvider = options.provider || process.env.LLM_PROVIDER || 'google';
+    const primaryModel =
+      options.model ||
+      process.env.LLM_MODEL ||
+      (targetProvider === 'google' ? 'gemini-3.8-flash' : targetProvider === 'openai' ? 'gpt-4o' : 'claude-3-5-sonnet-20241022');
+
+    const candidateModels =
+      targetProvider === 'google'
+        ? Array.from(new Set([primaryModel, ...GEMINI_CASCADE_MODELS]))
+        : [primaryModel];
+
+    // Pick first available model instance for stream
+    const modelToUse = candidateModels[0];
+    const modelInstance = this.getModel(modelToUse, targetProvider);
+
     const streamResult = streamText({
-      model: this.googleProvider(this.modelName),
+      model: modelInstance as any,
       system: systemPrompt,
       messages,
       tools: {
@@ -372,6 +319,9 @@ All options provide automated provisioning, scaling compute, and built-in databa
     return {
       streamResult,
       context,
+      activeModel: modelToUse,
+      activeProvider: targetProvider,
+      candidateModels,
     };
   }
 }

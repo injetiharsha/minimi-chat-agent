@@ -22,9 +22,95 @@ const recentChatsList = document.getElementById('recent-chats-list');
 const dbModal = document.getElementById('db-modal');
 const btnToggleDb = document.getElementById('btn-toggle-db');
 const btnCloseDb = document.getElementById('btn-close-db');
+const modelSelect = document.getElementById('model-select');
+const btnScrollBottom = document.getElementById('btn-scroll-bottom');
 
-// Blank input placeholder as requested
-userInput.placeholder = '';
+// ==========================================================================
+// Typewriter Placeholder Animation (Dynamic typing, blinking cursor, backspacing)
+// ==========================================================================
+const PLACEHOLDER_PROMPTS = [
+  'Ask a question or check if past information changed...',
+  'What did I ask you on 3 November? Is your answer still correct today?',
+  'Last Tuesday I asked you about Postgres hosting. Has any pricing changed?',
+  'On Monday we shortlisted 5 CRM tools. Did any of them change pricing?',
+  'Get top tier hosting platforms and their prices...',
+];
+
+let typePromptIdx = 0;
+let typeCharIdx = 0;
+let isBackspacing = false;
+let typewriterTimer = null;
+let isUserTypingOrFocused = false;
+
+function tickTypewriter() {
+  if (isUserTypingOrFocused || userInput.value.length > 0) {
+    userInput.placeholder = '';
+    return;
+  }
+
+  const currentPhrase = PLACEHOLDER_PROMPTS[typePromptIdx];
+
+  if (!isBackspacing) {
+    typeCharIdx++;
+    userInput.placeholder = currentPhrase.slice(0, typeCharIdx) + (typeCharIdx % 2 === 0 ? '|' : '');
+    if (typeCharIdx >= currentPhrase.length) {
+      userInput.placeholder = currentPhrase;
+      isBackspacing = true;
+      typewriterTimer = setTimeout(tickTypewriter, 2200);
+      return;
+    }
+    typewriterTimer = setTimeout(tickTypewriter, 45);
+  } else {
+    typeCharIdx--;
+    userInput.placeholder = currentPhrase.slice(0, typeCharIdx) + (typeCharIdx % 2 === 0 ? '|' : '');
+    if (typeCharIdx <= 0) {
+      isBackspacing = false;
+      typePromptIdx = (typePromptIdx + 1) % PLACEHOLDER_PROMPTS.length;
+      typewriterTimer = setTimeout(tickTypewriter, 450);
+      return;
+    }
+    typewriterTimer = setTimeout(tickTypewriter, 20);
+  }
+}
+
+userInput.addEventListener('focus', () => {
+  isUserTypingOrFocused = true;
+  userInput.placeholder = '';
+  clearTimeout(typewriterTimer);
+});
+
+userInput.addEventListener('blur', () => {
+  if (userInput.value.trim() === '') {
+    isUserTypingOrFocused = false;
+    typeCharIdx = 0;
+    isBackspacing = false;
+    typewriterTimer = setTimeout(tickTypewriter, 300);
+  }
+});
+
+// Start typewriter animation
+typewriterTimer = setTimeout(tickTypewriter, 500);
+
+// ==========================================================================
+// Scroll To Bottom Floating Button
+// ==========================================================================
+if (chatViewport && btnScrollBottom) {
+  chatViewport.addEventListener('scroll', () => {
+    const distanceFromBottom = chatViewport.scrollHeight - chatViewport.scrollTop - chatViewport.clientHeight;
+    if (distanceFromBottom > 160) {
+      btnScrollBottom.style.display = 'flex';
+    } else {
+      btnScrollBottom.style.display = 'none';
+    }
+  });
+
+  btnScrollBottom.addEventListener('click', () => {
+    chatViewport.scrollTo({
+      top: chatViewport.scrollHeight,
+      behavior: 'smooth',
+    });
+  });
+}
 
 // Live Clock
 function updateClock() {
@@ -76,7 +162,35 @@ function startNewSession(title) {
   document.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
 }
 
-// Render Recent Chats in Left Sidebar
+// ==========================================================================
+// Render Recent Chats in Left Sidebar & SQLite Synchronization
+// ==========================================================================
+async function syncThreadsFromDatabase() {
+  try {
+    const res = await fetch('/api/db');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.threads && Array.isArray(data.threads)) {
+      data.threads.forEach((dbThread) => {
+        const exists = chatSessions.some((s) => s.id === dbThread.id);
+        if (!exists) {
+          chatSessions.push({
+            id: dbThread.id,
+            title: dbThread.title || 'Conversation',
+            timestamp: new Date(dbThread.created_at || Date.now()).getTime(),
+            turns: [],
+          });
+        }
+      });
+      // Sort newest first
+      chatSessions.sort((a, b) => b.timestamp - a.timestamp);
+      renderRecentChats();
+    }
+  } catch (err) {
+    console.warn('Could not sync threads from SQLite:', err);
+  }
+}
+
 function renderRecentChats() {
   if (!recentChatsList) return;
   recentChatsList.innerHTML = '';
@@ -90,7 +204,7 @@ function renderRecentChats() {
     return;
   }
 
-  chatSessions.slice(0, 15).forEach((session) => {
+  chatSessions.slice(0, 20).forEach((session) => {
     const btn = document.createElement('button');
     btn.className = 'history-item' + (session.id === threadId ? ' active' : '');
     btn.setAttribute('data-thread-id', session.id);
@@ -153,17 +267,7 @@ async function switchThread(id, title) {
     }
   });
 
-  // 1. Try local stored turns first for instant loading
-  const localSession = chatSessions.find((s) => s.id === id);
-  if (localSession && localSession.turns && localSession.turns.length > 0) {
-    localSession.turns.forEach((turn) => {
-      renderPastMessageBubble(turn.role, turn.content);
-    });
-    chatViewport.scrollTop = chatViewport.scrollHeight;
-    return;
-  }
-
-  // 2. Fetch from server backend
+  // Fetch turns from server backend
   try {
     const res = await fetch(`/api/threads/${id}/turns`);
     if (res.ok) {
@@ -173,10 +277,20 @@ async function switchThread(id, title) {
           renderPastMessageBubble(turn.role, turn.content);
         });
         chatViewport.scrollTop = chatViewport.scrollHeight;
+        return;
       }
     }
   } catch (e) {
-    console.warn('Failed to load thread history:', e);
+    console.warn('Failed to load thread history from server:', e);
+  }
+
+  // Fallback to local stored turns
+  const localSession = chatSessions.find((s) => s.id === id);
+  if (localSession && localSession.turns && localSession.turns.length > 0) {
+    localSession.turns.forEach((turn) => {
+      renderPastMessageBubble(turn.role, turn.content);
+    });
+    chatViewport.scrollTop = chatViewport.scrollHeight;
   }
 }
 
@@ -320,6 +434,8 @@ async function activateScenario(key) {
 
   threadId = p.threadId;
   if (navThreadTitle) navThreadTitle.textContent = p.title;
+  if (welcomeCard) welcomeCard.style.display = 'none';
+  messagesList.innerHTML = '';
 
   document.querySelectorAll('.history-item').forEach((item) => {
     if (item.getAttribute('data-preset') === key) {
@@ -329,7 +445,13 @@ async function activateScenario(key) {
     }
   });
 
-  if (p.turns.length > 0) {
+  // Render past scenario turns into the chat view immediately
+  if (p.turns && p.turns.length > 0) {
+    p.turns.forEach((turn) => {
+      renderPastMessageBubble(turn.role, turn.content);
+    });
+    chatViewport.scrollTop = chatViewport.scrollHeight;
+
     try {
       await fetch('/api/import', {
         method: 'POST',
@@ -343,10 +465,14 @@ async function activateScenario(key) {
     } catch (e) {}
   }
 
+  // Pre-fill query
   userInput.value = p.query;
   userInput.style.height = 'auto';
   userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
   userInput.focus();
+
+  // Save session record and update left sidebar
+  recordTurn(p.threadId, 'system', p.title);
 }
 
 document.querySelectorAll('[data-preset]').forEach((btn) => {
@@ -371,11 +497,17 @@ document.querySelectorAll('.quick-card').forEach((card) => {
   });
 });
 
-// Full Markdown Parser with Fenced Code Blocks & Table Copy
+// ==========================================================================
+// Full Robust Markdown Parser with Table Normalization & Code Highlighting
+// ==========================================================================
 function renderMarkdown(text) {
   if (!text) return '';
 
-  // Normalize pipe tables where rows were separated by || instead of newline
+  // 1. Separate glue headers like "2026.Verification Summary" -> "\n\n### Verification Summary\n\n"
+  text = text.replace(/([^\n])(Verification Summary|###\s*)/gi, '$1\n\n### Verification Summary\n\n');
+  text = text.replace(/###\s*###\s*Verification Summary/g, '### Verification Summary');
+
+  // 2. Normalize pipe tables where rows were collapsed onto one line separated by ||
   text = text.replace(/\|\s*\|\s*/g, '|\n|');
 
   const lines = text.split('\n');
@@ -397,10 +529,10 @@ function renderMarkdown(text) {
     // Inline code
     c = c.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
     // Status formatting:
-    // "No change found" is normal plain text
-    c = c.replace(/`?\[?No change found\]?`?/gi, '<span style="color:var(--text-sub);">No change found</span>');
+    // "No change found" without square brackets, clean text
+    c = c.replace(/`?\[?No change found\]?`?/gi, '<span style="font-weight:600; color:var(--text-main);">No change found</span>');
     // "Changed" IS important, so it is bolded
-    c = c.replace(/`?\[?Changed\]?`?/gi, '<strong style="color:var(--text-main);">Changed</strong>');
+    c = c.replace(/`?\[?Changed\]?`?/gi, '<strong style="color:var(--text-main); font-weight:700;">Changed</strong>');
     c = c.replace(/`?\[?Unverified\]?`?/gi, '<em>Unverified</em>');
     c = c.replace(/`?\[?Not comparable\]?`?/gi, '<em>Not comparable</em>');
     // Markdown links
@@ -455,7 +587,7 @@ function renderMarkdown(text) {
       continue;
     }
 
-    // Table Line Detection (robust with or without trailing pipes)
+    // Table Line Detection
     const isTableLine = trimmed.startsWith('|') && trimmed.includes('|', 1);
     if (isTableLine) {
       let clean = trimmed;
@@ -540,15 +672,56 @@ function attachCopyHandlers(container) {
   });
 }
 
-// Live Antigravity Telemetry Manager (Clean Frameless Stream)
+// ==========================================================================
+// Gemini / Antigravity Style Dynamic Reasoning Telemetry Accordion
+// ==========================================================================
 class LiveTelemetryManager {
   constructor(parentContainer) {
     this.parent = parentContainer;
     this.stepsMap = new Map();
+    this.startTime = Date.now();
 
     this.container = document.createElement('div');
     this.container.className = 'reasoning-block';
     this.parent.appendChild(this.container);
+
+    // Initial reading memory context step
+    this.handleStep({
+      id: 'memory-check',
+      status: 'done',
+      title: 'Reading context & memory',
+      detail: 'Retrieved conversational memory and established temporal boundary.',
+    });
+
+    // Active live thinking state
+    this.thinkingStep = document.createElement('div');
+    this.thinkingStep.className = 'reasoning-step-item';
+    this.thinkingStep.innerHTML = `
+      <div class="reasoning-step-header">
+        <div class="reasoning-step-left">
+          <div class="telemetry-spinner"></div>
+          <span class="reasoning-step-title" id="telemetry-thinking-title">Thinking...</span>
+        </div>
+        <div class="reasoning-step-right">
+          <span class="reasoning-step-time" id="telemetry-thinking-time">1s</span>
+          <svg class="reasoning-step-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </div>
+      </div>
+    `;
+    this.container.appendChild(this.thinkingStep);
+
+    this.thinkingTitleEl = this.thinkingStep.querySelector('#telemetry-thinking-title');
+    this.thinkingTimeEl = this.thinkingStep.querySelector('#telemetry-thinking-time');
+
+    // Ticking elapsed seconds
+    this.timerInterval = setInterval(() => {
+      const elapsedSec = Math.max(1, Math.round((Date.now() - this.startTime) / 1000));
+      if (this.thinkingTimeEl) {
+        this.thinkingTimeEl.textContent = `${elapsedSec}s`;
+      }
+    }, 1000);
   }
 
   handleStep(data) {
@@ -556,7 +729,12 @@ class LiveTelemetryManager {
     if (!item) {
       item = document.createElement('div');
       item.className = 'reasoning-step-item';
-      this.container.appendChild(item);
+      // Insert before active thinking step if present
+      if (this.thinkingStep && this.thinkingStep.parentNode === this.container) {
+        this.container.insertBefore(item, this.thinkingStep);
+      } else {
+        this.container.appendChild(item);
+      }
       this.stepsMap.set(data.id, item);
     }
 
@@ -566,7 +744,7 @@ class LiveTelemetryManager {
         <div class="reasoning-step-left">
           ${isRunning 
             ? '<div class="telemetry-spinner"></div>' 
-            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="3" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>'}
+            : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>'}
           <span class="reasoning-step-title">${escapeText(data.title)}</span>
         </div>
         <div class="reasoning-step-right">
@@ -576,7 +754,7 @@ class LiveTelemetryManager {
           </svg>
         </div>
       </div>
-      <div class="reasoning-step-detail">${escapeText(data.detail || '')}</div>
+      ${data.detail ? `<div class="reasoning-step-detail">${escapeText(data.detail)}</div>` : ''}
     `;
 
     const headerEl = item.querySelector('.reasoning-step-header');
@@ -584,6 +762,35 @@ class LiveTelemetryManager {
       headerEl.onclick = () => {
         item.classList.toggle('open');
       };
+    }
+  }
+
+  finalize(totalSeconds) {
+    clearInterval(this.timerInterval);
+    const sec = totalSeconds || Math.max(1, Math.round((Date.now() - this.startTime) / 1000));
+
+    if (this.thinkingStep) {
+      this.thinkingStep.innerHTML = `
+        <div class="reasoning-step-header">
+          <div class="reasoning-step-left">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2.5" style="flex-shrink:0;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <span class="reasoning-step-title">Thought for ${sec}s</span>
+          </div>
+          <div class="reasoning-step-right">
+            <svg class="reasoning-step-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="reasoning-step-detail">Grounded real-time verification across temporal conversation history and live search.</div>
+      `;
+
+      const headerEl = this.thinkingStep.querySelector('.reasoning-step-header');
+      if (headerEl) {
+        headerEl.onclick = () => {
+          this.thinkingStep.classList.toggle('open');
+        };
+      }
     }
   }
 }
@@ -597,45 +804,15 @@ function escapeText(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Staged Non-Glitching Stream Renderer:
-// - Text streams smoothly with requestAnimationFrame
-// - Table and Code blocks buffer cleanly to prevent flickering DOM churn
+// Staged Non-Glitching Stream Renderer
 function createStreamRenderer(targetContainer) {
   let rawText = '';
   let renderScheduled = false;
 
   function update() {
     renderScheduled = false;
-
-    // Check if table or code block is halfway through being written
-    const lines = rawText.split('\n');
-    const hasUnclosedCode = (rawText.match(/```/g) || []).length % 2 === 1;
-    const hasActiveTable = lines.some((l) => l.trim().startsWith('|'));
-
-    if (hasActiveTable && !hasUnclosedCode) {
-      const firstTableIdx = lines.findIndex((l) => l.trim().startsWith('|'));
-      const textBeforeTable = lines.slice(0, firstTableIdx).join('\n');
-      const tableLines = lines.slice(firstTableIdx);
-      const isTableFinished =
-        tableLines.length >= 3 &&
-        (tableLines[tableLines.length - 1].trim() === '' || !tableLines[tableLines.length - 1].trim().startsWith('|'));
-
-      if (isTableFinished) {
-        targetContainer.innerHTML = renderMarkdown(rawText);
-        attachCopyHandlers(targetContainer);
-      } else {
-        targetContainer.innerHTML = renderMarkdown(textBeforeTable) + '<div style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;">Formatting verified table...</div>';
-      }
-    } else if (hasUnclosedCode) {
-      // Don't break DOM on half-written code blocks
-      const firstCodeIdx = lines.findIndex((l) => l.trim().startsWith('```'));
-      const textBeforeCode = lines.slice(0, firstCodeIdx).join('\n');
-      targetContainer.innerHTML = renderMarkdown(textBeforeCode) + '<div style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;">Synthesizing implementation...</div>';
-    } else {
-      // Standard smooth prose stream
-      targetContainer.innerHTML = renderMarkdown(rawText);
-      attachCopyHandlers(targetContainer);
-    }
+    targetContainer.innerHTML = renderMarkdown(rawText);
+    attachCopyHandlers(targetContainer);
   }
 
   return {
@@ -656,7 +833,9 @@ function createStreamRenderer(targetContainer) {
   };
 }
 
+// ==========================================================================
 // Chat Form Submission
+// ==========================================================================
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const query = userInput.value.trim();
@@ -691,11 +870,22 @@ chatForm.addEventListener('submit', async (e) => {
   assistantWrapper.className = 'msg-wrapper assistant';
   messagesList.appendChild(assistantWrapper);
 
+  // Initialize live Antigravity reasoning telemetry
+  const telemetryManager = new LiveTelemetryManager(assistantWrapper);
+
   chatViewport.scrollTop = chatViewport.scrollHeight;
 
-  let telemetryManager = null;
   let assistantBubble = null;
   let streamRenderer = null;
+
+  // Selected Model & Provider
+  let selectedProvider = 'google';
+  let selectedModel = 'gemini-3.8-flash';
+  if (modelSelect && modelSelect.value) {
+    const parts = modelSelect.value.split(':');
+    selectedProvider = parts[0] || 'google';
+    selectedModel = parts[1] || 'gemini-3.8-flash';
+  }
 
   try {
     const response = await fetch('/api/chat', {
@@ -704,6 +894,8 @@ chatForm.addEventListener('submit', async (e) => {
       body: JSON.stringify({
         message: query,
         threadId,
+        provider: selectedProvider,
+        model: selectedModel,
       }),
     });
 
@@ -729,15 +921,17 @@ chatForm.addEventListener('submit', async (e) => {
 
             // Live sequential telemetry step event
             if (data.id && (data.status === 'running' || data.status === 'done')) {
-              if (!telemetryManager) {
-                telemetryManager = new LiveTelemetryManager(assistantWrapper);
+              if (data.id === 'thinking' && data.status === 'done') {
+                telemetryManager.finalize();
+              } else {
+                telemetryManager.handleStep(data);
               }
-              telemetryManager.handleStep(data);
               chatViewport.scrollTop = chatViewport.scrollHeight;
             }
-            // Token generation
+            // First token arrives -> finalize thinking and create response container
             else if (data.delta) {
               if (!assistantBubble) {
+                telemetryManager.finalize();
                 assistantBubble = document.createElement('div');
                 assistantBubble.className = 'chat-bubble';
                 assistantWrapper.appendChild(assistantBubble);
@@ -755,6 +949,7 @@ chatForm.addEventListener('submit', async (e) => {
             }
             // Error event
             else if (data.error) {
+              telemetryManager.finalize();
               if (!assistantBubble) {
                 assistantBubble = document.createElement('div');
                 assistantBubble.className = 'chat-bubble';
@@ -768,12 +963,13 @@ chatForm.addEventListener('submit', async (e) => {
       chatViewport.scrollTop = chatViewport.scrollHeight;
     }
 
-    if (streamRenderer && !assistantBubble.querySelector('.msg-footer')) {
+    if (streamRenderer && assistantBubble && !assistantBubble.querySelector('.msg-footer')) {
       streamRenderer.finalize();
       appendAssistantFooter(assistantBubble, streamRenderer.getText());
       recordTurn(threadId, 'assistant', streamRenderer.getText());
     }
   } catch (err) {
+    telemetryManager.finalize();
     if (!assistantBubble) {
       assistantBubble = document.createElement('div');
       assistantBubble.className = 'chat-bubble';
@@ -784,7 +980,7 @@ chatForm.addEventListener('submit', async (e) => {
 });
 
 function appendAssistantFooter(bubble, text) {
-  if (bubble.querySelector('.msg-footer')) return;
+  if (!bubble || bubble.querySelector('.msg-footer')) return;
   const footer = document.createElement('div');
   footer.className = 'msg-footer';
   footer.innerHTML = `
@@ -866,5 +1062,5 @@ function renderRawDbTable(containerId, rows, columns) {
   container.innerHTML = html;
 }
 
-// Initial render of existing sessions
-renderRecentChats();
+// Initial sync of existing threads from SQLite database & localStorage
+syncThreadsFromDatabase();

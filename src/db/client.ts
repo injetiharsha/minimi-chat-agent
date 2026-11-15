@@ -80,14 +80,18 @@ export class DatabaseClient {
     this.save();
   }
 
-  getThreadTurns(threadId: string, limit: number = 20): Turn[] {
+  getThreadTurns(threadId: string, limit: number = 30): Turn[] {
     if (!this.db) throw new Error('Database not initialized');
     const stmt = this.db.prepare(
       `SELECT id, thread_id, role, content, sources, created_at
-       FROM turns
-       WHERE thread_id = :threadId
-       ORDER BY created_at ASC
-       LIMIT :limit;`
+       FROM (
+         SELECT id, thread_id, role, content, sources, created_at
+         FROM turns
+         WHERE thread_id = :threadId
+         ORDER BY created_at DESC
+         LIMIT :limit
+       )
+       ORDER BY created_at ASC;`
     );
     stmt.bind({ ':threadId': threadId, ':limit': limit });
     const turns: Turn[] = [];
