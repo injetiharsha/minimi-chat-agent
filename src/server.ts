@@ -278,8 +278,6 @@ function generateDynamicTelemetryPlan(context: any, message: string, searchItems
   });
   return steps;
 }
-  return steps;
-}
 
 // Chat SSE Streaming Endpoint
 app.post('/api/chat', async (c) => {
