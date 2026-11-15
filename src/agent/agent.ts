@@ -165,16 +165,16 @@ export class AgentService {
         entities.push({ name: 'Playwright', attr: 'releases', plan: 'Fast headless browser recommendation' });
       } else if (/postgres|supabase|neon/i.test(userMessage) || (/postgres/i.test(baselineContent) && !/crm/i.test(userMessage))) {
         entities.push(
-          { name: 'Supabase', attr: 'pricing', plan: 'Pro tier ($25/mo)' },
-          { name: 'Neon', attr: 'pricing', plan: 'Free tier (0.5 GB) / Usage-based' }
+          { name: 'Supabase', attr: 'pricing', plan: 'Pro tier (**$25/mo**)' },
+          { name: 'Neon', attr: 'pricing', plan: 'Free tier (0.5 GB) / **Usage-based**' }
         );
       } else if (/crm/i.test(userMessage) || /sales/i.test(baselineContent)) {
         entities.push(
-          { name: 'HubSpot Sales Hub', attr: 'pricing', plan: 'Starter ($20/seat/mo)' },
-          { name: 'Pipedrive', attr: 'pricing', plan: 'Essential ($14/user/mo)' },
-          { name: 'Zoho CRM', attr: 'pricing', plan: 'Standard ($14/user/mo)' },
-          { name: 'Close', attr: 'pricing', plan: 'Startup ($49/user/mo)' },
-          { name: 'Freshsales', attr: 'pricing', plan: 'Growth ($15/user/mo)' }
+          { name: 'HubSpot Sales Hub', attr: 'pricing', plan: 'Starter (**$20/seat/mo**)' },
+          { name: 'Pipedrive', attr: 'pricing', plan: 'Essential (**$14/user/mo**)' },
+          { name: 'Zoho CRM', attr: 'pricing', plan: 'Standard (**$14/user/mo**)' },
+          { name: 'Close', attr: 'pricing', plan: 'Startup (**$49/user/mo**)' },
+          { name: 'Freshsales', attr: 'pricing', plan: 'Growth (**$15/user/mo**)' }
         );
       }
 
@@ -199,7 +199,7 @@ export class AgentService {
           const entityInfo = entities[i];
           const url = res.current_state.source_url || 'https://google.com';
           const title = res.current_state.source_title || `${res.entity} Official`;
-          out += `| **${res.entity}** | *${entityInfo.plan || 'Established baseline'}* | **No change found** | [${title}](${url}) |\n`;
+          out += `| **${res.entity}** | ${entityInfo.plan || 'Established baseline'} | No change found | [${title}](${url}) |\n`;
         }
         return out;
       }
@@ -211,11 +211,11 @@ export class AgentService {
     if (/hosting|platform|postgres|database|serverless/i.test(userMessage)) {
       return `Here are top cloud hosting platforms and their current pricing:
 
-1. **Render**: Free tier for static sites and web services; Individual instances start at *$7/month* with automated SSL and Git-based continuous deployment.
-2. **Supabase**: Generous free tier with 500MB database storage; Pro tier at *$25/month* including compute credits, daily backups, and edge functions.
+1. **Render**: Free tier for static sites and web services; Individual instances start at **$7/month** with automated SSL and Git-based continuous deployment.
+2. **Supabase**: Generous free tier with 500MB database storage; Pro tier at **$25/month** including compute credits, daily backups, and edge functions.
 3. **Neon**: Serverless Postgres with a free tier offering 0.5 GB storage; consumption-based autoscaling compute.
-4. **Fly.io**: Free allowances for small workloads; pay-as-you-go based on shared CPU cores starting around *$3-$5/month*.
-5. **Railway**: Starter trial with *$5* monthly credit; Hobby plan at *$5/month* plus execution resources.
+4. **Fly.io**: Free allowances for small workloads; pay-as-you-go based on shared CPU cores starting around **$3-$5/month**.
+5. **Railway**: Starter trial with **$5** monthly credit; Hobby plan at **$5/month** plus execution resources.
 
 All options provide automated provisioning, scaling compute, and built-in database support.`;
     }

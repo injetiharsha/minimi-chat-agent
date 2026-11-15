@@ -23,6 +23,59 @@ const dbModal = document.getElementById('db-modal');
 const btnToggleDb = document.getElementById('btn-toggle-db');
 const btnCloseDb = document.getElementById('btn-close-db');
 
+// Placeholder: keep completely blank as requested
+userInput.placeholder = '';
+
+// Live Clock
+function updateClock() {
+  const now = new Date();
+  if (clockDisplay) {
+    clockDisplay.textContent = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Textarea Auto-Resize
+userInput.addEventListener('input', () => {
+  userInput.style.height = 'auto';
+  userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
+});
+
+userInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    chatForm.dispatchEvent(new Event('submit'));
+  }
+});
+
+// Sidebar Toggle
+if (btnToggleSidebar && appSidebar) {
+  btnToggleSidebar.addEventListener('click', () => {
+    appSidebar.classList.toggle('collapsed');
+  });
+}
+
+// New Chat Button
+if (btnNewChat) {
+  btnNewChat.addEventListener('click', () => {
+    startNewSession('New Session');
+  });
+}
+
+function startNewSession(title) {
+  threadId = 'session-' + Date.now();
+  messagesList.innerHTML = '';
+  if (welcomeCard) welcomeCard.style.display = 'flex';
+  if (navThreadTitle) navThreadTitle.textContent = title || 'New Session';
+  userInput.value = '';
+  userInput.style.height = 'auto';
+  document.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
+}
+
 // Render Recent Chats in Left Sidebar
 function renderRecentChats() {
   if (!recentChatsList) return;
@@ -64,17 +117,21 @@ function renderRecentChats() {
   });
 }
 
-function saveChatSession(id, title) {
-  const existingIdx = chatSessions.findIndex((s) => s.id === id);
-  if (existingIdx >= 0) {
-    chatSessions[existingIdx].timestamp = Date.now();
-  } else {
-    chatSessions.unshift({
-      id,
-      title: title.length > 28 ? title.slice(0, 28) + '...' : title,
+function recordTurn(tId, role, content) {
+  let session = chatSessions.find((s) => s.id === tId);
+  if (!session) {
+    session = {
+      id: tId,
+      title: content.length > 28 ? content.slice(0, 28) + '...' : content,
       timestamp: Date.now(),
-    });
+      turns: [],
+    };
+    chatSessions.unshift(session);
   }
+  if (!session.turns) session.turns = [];
+  session.turns.push({ role, content, createdAt: new Date().toISOString() });
+  session.timestamp = Date.now();
+
   try {
     localStorage.setItem('minimi_chat_sessions', JSON.stringify(chatSessions));
   } catch (e) {}
@@ -96,132 +153,41 @@ async function switchThread(id, title) {
     }
   });
 
-  // Fetch thread history from backend
+  // 1. Try local stored turns first for instant loading
+  const localSession = chatSessions.find((s) => s.id === id);
+  if (localSession && localSession.turns && localSession.turns.length > 0) {
+    localSession.turns.forEach((turn) => {
+      renderPastMessageBubble(turn.role, turn.content);
+    });
+    chatViewport.scrollTop = chatViewport.scrollHeight;
+    return;
+  }
+
+  // 2. Fetch from server backend
   try {
     const res = await fetch(`/api/threads/${id}/turns`);
     if (res.ok) {
       const data = await res.json();
       if (data.turns && data.turns.length > 0) {
         data.turns.forEach((turn) => {
-          const wrapper = document.createElement('div');
-          wrapper.className = `msg-wrapper ${turn.role}`;
-          const bubble = document.createElement('div');
-          bubble.className = 'chat-bubble';
-          bubble.innerHTML = renderMarkdown(turn.content);
-          wrapper.appendChild(bubble);
-          messagesList.appendChild(wrapper);
+          renderPastMessageBubble(turn.role, turn.content);
         });
         chatViewport.scrollTop = chatViewport.scrollHeight;
       }
     }
   } catch (e) {
-    console.warn('Failed to load thread turns:', e);
+    console.warn('Failed to load thread history:', e);
   }
 }
 
-// Live Clock
-function updateClock() {
-  const now = new Date();
-  if (clockDisplay) {
-    clockDisplay.textContent = now.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-}
-setInterval(updateClock, 1000);
-updateClock();
-
-// Dynamic Typing Placeholder with Blinking Cursor & Backspacing
-const PLACEHOLDER_TEXTS = [
-  'Ask a question or check if past information changed...',
-  'Has Supabase pricing changed since last Tuesday?',
-  'On Monday we shortlisted 5 CRM tools for sales...',
-  'What did I ask you on 3 November?',
-  'Get me top hosting platforms and their pricings...',
-];
-
-let textIdx = 0;
-let charIdx = 0;
-let isDeleting = false;
-let typingActive = true;
-
-function typePlaceholderLoop() {
-  if (!typingActive || document.activeElement === userInput) {
-    return;
-  }
-  const currentText = PLACEHOLDER_TEXTS[textIdx];
-  if (isDeleting) {
-    userInput.placeholder = currentText.substring(0, charIdx - 1) + ' |';
-    charIdx--;
-    if (charIdx <= 0) {
-      isDeleting = false;
-      textIdx = (textIdx + 1) % PLACEHOLDER_TEXTS.length;
-      setTimeout(typePlaceholderLoop, 400);
-      return;
-    }
-    setTimeout(typePlaceholderLoop, 30);
-  } else {
-    userInput.placeholder = currentText.substring(0, charIdx + 1) + ' |';
-    charIdx++;
-    if (charIdx >= currentText.length) {
-      isDeleting = true;
-      setTimeout(typePlaceholderLoop, 2400);
-      return;
-    }
-    setTimeout(typePlaceholderLoop, 55);
-  }
-}
-
-userInput.addEventListener('focus', () => {
-  typingActive = false;
-  userInput.placeholder = 'Ask a question or check if past information changed...';
-});
-
-userInput.addEventListener('blur', () => {
-  if (!userInput.value.trim()) {
-    typingActive = true;
-    setTimeout(typePlaceholderLoop, 500);
-  }
-});
-
-setTimeout(typePlaceholderLoop, 800);
-
-// Textarea Auto-Resize
-userInput.addEventListener('input', () => {
-  userInput.style.height = 'auto';
-  userInput.style.height = Math.min(userInput.scrollHeight, 120) + 'px';
-});
-
-userInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    chatForm.dispatchEvent(new Event('submit'));
-  }
-});
-
-// Sidebar Toggle
-if (btnToggleSidebar && appSidebar) {
-  btnToggleSidebar.addEventListener('click', () => {
-    appSidebar.classList.toggle('collapsed');
-  });
-}
-
-// New Chat Button
-if (btnNewChat) {
-  btnNewChat.addEventListener('click', () => {
-    startNewSession('New Session');
-  });
-}
-
-function startNewSession(title) {
-  threadId = 'session-' + Date.now();
-  messagesList.innerHTML = '';
-  if (welcomeCard) welcomeCard.style.display = 'flex';
-  if (navThreadTitle) navThreadTitle.textContent = title || 'New Session';
-  userInput.value = '';
-  userInput.style.height = 'auto';
-  document.querySelectorAll('.history-item').forEach((item) => item.classList.remove('active'));
+function renderPastMessageBubble(role, content) {
+  const wrapper = document.createElement('div');
+  wrapper.className = `msg-wrapper ${role}`;
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  bubble.innerHTML = renderMarkdown(content);
+  wrapper.appendChild(bubble);
+  messagesList.appendChild(wrapper);
 }
 
 // Evaluation Presets
@@ -353,7 +319,9 @@ document.querySelectorAll('.quick-card').forEach((card) => {
   });
 });
 
-// Markdown & Table Parser (Normal Bold & Italic Typography, No Badges)
+// Clean Markdown & Table Parser
+// Key rule: Bold the important facts/charges ($25/mo, $49/mo, Changed).
+// Unchanged items remain normal clean text without loud badges.
 function renderMarkdown(text) {
   if (!text) return '';
 
@@ -371,9 +339,11 @@ function renderMarkdown(text) {
     c = c.replace(/\*(.*?)\*/g, '<em>$1</em>');
     // Inline code
     c = c.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-    // Status text formatting (clean typography without badge shapes)
-    c = c.replace(/`?\[?No change found\]?`?/gi, '<strong>No change found</strong>');
-    c = c.replace(/`?\[?Changed\]?`?/gi, '<strong>Changed</strong>');
+    // Status text formatting:
+    // "No change found" is normal plain text (not bolded, not badged)
+    c = c.replace(/`?\[?No change found\]?`?/gi, '<span style="color:var(--text-sub);">No change found</span>');
+    // "Changed" IS important, so it is bolded
+    c = c.replace(/`?\[?Changed\]?`?/gi, '<strong style="color:var(--text-main);">Changed</strong>');
     c = c.replace(/`?\[?Unverified\]?`?/gi, '<em>Unverified</em>');
     c = c.replace(/`?\[?Not comparable\]?`?/gi, '<em>Not comparable</em>');
     // Markdown links
@@ -463,12 +433,17 @@ function createDynamicReasoningWidget(steps) {
   body.className = 'reasoning-body';
   body.innerHTML = steps
     .map(
-      (s, idx) => `
+      (s) => `
     <div class="reasoning-step-item">
-      <span class="step-num">${idx + 1}.</span>
+      <svg class="telemetry-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted); margin-top:3px; flex-shrink:0;">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
       <div class="step-text">
-        <strong style="color:var(--text-main); font-weight:600;">${escapeText(s.title)}:</strong>
-        <span style="color:var(--text-sub);">${escapeText(s.detail)}</span>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong style="color:var(--text-main); font-weight:600;">${escapeText(s.title)}</strong>
+          ${s.time ? `<span style="font-family:var(--font-mono); font-size:0.68rem; color:var(--text-muted);">${escapeText(s.time)}</span>` : ''}
+        </div>
+        <div style="color:var(--text-sub); font-size:0.76rem; margin-top:2px;">${escapeText(s.detail)}</div>
       </div>
     </div>
   `
@@ -497,6 +472,59 @@ function escapeText(str) {
     .replace(/"/g, '&quot;');
 }
 
+// Staged Non-Glitching Stream Renderer:
+// If it's text, it streams tokens smoothly with requestAnimationFrame.
+// If it's a table, table lines are buffered and the complete table renders at once!
+function createStreamRenderer(targetContainer) {
+  let rawText = '';
+  let renderScheduled = false;
+
+  function update() {
+    renderScheduled = false;
+
+    // Check if table is currently in progress
+    const lines = rawText.split('\n');
+    const hasActiveTable = lines.some((l) => l.trim().startsWith('|'));
+
+    if (hasActiveTable) {
+      // Find where table starts
+      const firstTableIdx = lines.findIndex((l) => l.trim().startsWith('|'));
+      const textBeforeTable = lines.slice(0, firstTableIdx).join('\n');
+      const tableLines = lines.slice(firstTableIdx);
+      const isTableFinished =
+        tableLines.length >= 3 &&
+        (tableLines[tableLines.length - 1].trim() === '' || !tableLines[tableLines.length - 1].trim().startsWith('|'));
+
+      if (isTableFinished) {
+        targetContainer.innerHTML = renderMarkdown(rawText);
+      } else {
+        // Render text before table smoothly; avoid glitching table until closed
+        targetContainer.innerHTML = renderMarkdown(textBeforeTable) + '<div style="font-size:0.78rem; color:var(--text-muted); padding:6px 0;">Formatting verified table...</div>';
+      }
+    } else {
+      // Clean regular prose tokens stream smoothly
+      targetContainer.innerHTML = renderMarkdown(rawText);
+    }
+  }
+
+  return {
+    appendToken(delta) {
+      rawText += delta;
+      if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(update);
+      }
+    },
+    finalize() {
+      // Instant complete render of final markdown
+      targetContainer.innerHTML = renderMarkdown(rawText);
+    },
+    getText() {
+      return rawText;
+    },
+  };
+}
+
 // Chat Form Submission
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -507,10 +535,10 @@ chatForm.addEventListener('submit', async (e) => {
   userInput.value = '';
   userInput.style.height = 'auto';
 
-  // 1. Add chat session to left sidebar
-  saveChatSession(threadId, query);
+  // 1. Record user turn
+  recordTurn(threadId, 'user', query);
 
-  // 2. Render user bubble
+  // 2. Render user message bubble
   const userWrapper = document.createElement('div');
   userWrapper.className = 'msg-wrapper user';
   userWrapper.innerHTML = `<div class="chat-bubble">${escapeText(query)}</div>`;
@@ -525,7 +553,7 @@ chatForm.addEventListener('submit', async (e) => {
 
   let reasoningBlock = null;
   let assistantBubble = null;
-  let accumulatedText = '';
+  let streamRenderer = null;
 
   try {
     const response = await fetch('/api/chat', {
@@ -557,21 +585,27 @@ chatForm.addEventListener('submit', async (e) => {
           try {
             const data = JSON.parse(line.slice(6));
 
-            // Dynamic reasoning steps event
+            // Dynamic telemetry reasoning steps
             if (data.steps && !reasoningBlock) {
               reasoningBlock = createDynamicReasoningWidget(data.steps);
               assistantWrapper.appendChild(reasoningBlock);
             }
-            // Token generation event
+            // Token generation
             else if (data.delta) {
-              accumulatedText += data.delta;
-              // Only create the response text container when text actually appears!
               if (!assistantBubble) {
                 assistantBubble = document.createElement('div');
                 assistantBubble.className = 'chat-bubble';
                 assistantWrapper.appendChild(assistantBubble);
+                streamRenderer = createStreamRenderer(assistantBubble);
               }
-              assistantBubble.innerHTML = renderMarkdown(accumulatedText);
+              if (streamRenderer) {
+                streamRenderer.appendToken(data.delta);
+              }
+            }
+            // Done event
+            else if (data.success && streamRenderer) {
+              streamRenderer.finalize();
+              recordTurn(threadId, 'assistant', streamRenderer.getText());
             }
             // Error event
             else if (data.error) {
@@ -586,6 +620,11 @@ chatForm.addEventListener('submit', async (e) => {
         }
       }
       chatViewport.scrollTop = chatViewport.scrollHeight;
+    }
+
+    if (streamRenderer) {
+      streamRenderer.finalize();
+      recordTurn(threadId, 'assistant', streamRenderer.getText());
     }
   } catch (err) {
     if (!assistantBubble) {
